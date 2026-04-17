@@ -277,6 +277,65 @@ Bull ¥26.95 / Base ¥20.73 / Bear ¥14.51，每个情景有概率和假设。
 
 多层 fallback 链 — 一个源挂了自动切下一个。
 
+### 🔑 可选：东方财富妙想 Skills API（v2.3 新增）
+
+2026 年 `push2.eastmoney.com` 在大陆网络经常被反爬拦截。若设置
+`MX_APIKEY`，UZI-Skill 会优先走官方 NLP API：
+
+- **中文名纠错**："北部港湾" → 自动识别为 "北部湾港(000582.SZ)"
+- **行情快照**：绕过 push2 直接拿到最新价/市值/PE/PB/行业
+
+配置：
+```bash
+cp .env.example .env
+# 编辑 .env 填入 MX_APIKEY（免费申领：https://dl.dfcfs.com/m/itc4）
+```
+
+无 key 时全部回退到 XueQiu/akshare 链，现有用户零感知。
+
+### 🚨 数据缺口怎么处理（v2.3）
+
+若某些字段脚本拿不到（网络限制 / 新股 / 停牌），pipeline **不会塞默认值糊弄**：
+
+1. 生成 `_data_gaps.json` 列出每个缺口的建议恢复动作（浏览器 / MX / WebSearch / 推导）
+2. Agent 按 [HARD-GATE-DATAGAPS](skills/deep-analysis/SKILL.md) 逐条尝试补齐
+3. 真的补不到 → 在 `agent_analysis.json` 里 `data_gap_acknowledged` 显式承认
+4. HTML 报告顶部显示橙色 banner + 相关字段显示 "—" 并划线
+
+这样你永远能分辨"这只股真的不适合买" vs "只是数据没拿到"。
+
+### 🌐 网络受限环境（v2.4 新增）
+
+UZI-Skill 在大陆和海外都能跑，但瓶颈不同，建议对号入座：
+
+**大陆网络 · `pip install` 失败怎么办？**
+
+`run.py` 和 `setup.sh` 会自动尝试国内镜像（清华 → 阿里云 → 中科大），
+所以常见情况你什么都不用做。若要手动指定：
+
+```bash
+pip install -r requirements.txt \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn
+```
+
+**Codex / 海外 agent · 数据源访问慢怎么办？**
+
+国内数据源（尤其 `push2.eastmoney.com`）从海外访问经常超时。**强烈建议
+设置 `MX_APIKEY`**（免费申领 → https://dl.dfcfs.com/m/itc4），它走
+`mkapi2.dfcfs.com` 境内外都通，同时天然具备中文名纠错能力。
+
+```bash
+cp .env.example .env
+# 编辑 .env 填入 MX_APIKEY
+python run.py 贵州茅台
+```
+
+**双端都不通**：agent 应保留 `_data_gaps.json` / `_resolve_error.json`，
+等网络恢复后直接跑 `stage2()` 可以复用已采集数据，不用从头来过。
+
+详见 [AGENTS.md · 网络受限环境](AGENTS.md) 的场景 A/B/C 速查。
+
 ---
 
 ## 📁 项目结构

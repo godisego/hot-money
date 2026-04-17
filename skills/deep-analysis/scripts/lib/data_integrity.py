@@ -157,6 +157,119 @@ def validate(raw: dict) -> dict:
     }
 
 
+# ═══════════════════════════════════════════════════════════════
+# Recovery task generation
+# ═══════════════════════════════════════════════════════════════
+
+# Per-field recovery hints · used by agents to prioritize retry strategy.
+# Order matters — browser > MX > WebSearch > inference.
+_RECOVERY_HINTS: dict[tuple[str, str], list[str]] = {
+    ("0_basic", "name"):         ["mx: '{code} 公司简称'", "browser: https://xueqiu.com/S/{code_raw}", "ws: '{code} 公司简介'"],
+    ("0_basic", "price"):        ["mx: '{code} 最新价'", "browser: https://xueqiu.com/S/{code_raw}", "ws: '{code} 股价 2026'"],
+    ("0_basic", "industry"):     ["mx: '{code} 所属申万行业'", "browser: https://xueqiu.com/S/{code_raw}/F10", "ws: '{code} 所属行业'"],
+    ("0_basic", "market_cap"):   ["mx: '{code} 总市值'", "browser: https://quote.eastmoney.com/{eastmoney_code}.html", "ws: '{code} 市值'"],
+    ("0_basic", "pe_ttm"):       ["mx: '{code} 市盈率TTM'", "browser: https://xueqiu.com/S/{code_raw}", "infer: 市值 / 归母净利润"],
+    ("0_basic", "pb"):           ["mx: '{code} 市净率'", "browser: https://xueqiu.com/S/{code_raw}"],
+    ("1_financials", "roe_history"):        ["mx: '{code} 最近5年ROE'", "browser: https://xueqiu.com/S/{code_raw}/F10/main"],
+    ("1_financials", "revenue_history"):    ["mx: '{code} 最近5年营业收入'", "browser: https://xueqiu.com/S/{code_raw}/F10/main"],
+    ("1_financials", "net_profit_history"): ["mx: '{code} 最近5年净利润'", "browser: https://xueqiu.com/S/{code_raw}/F10/main"],
+    ("1_financials", "financial_health"):   ["infer: 从 ROE/debt_ratio/fcf 综合判断", "mx: '{code} 财务健康度'"],
+    ("2_kline", "stage"):        ["infer: 从 ma20/ma60 多空排列推断 Wyckoff stage", "browser: https://xueqiu.com/S/{code_raw}"],
+    ("10_valuation", "pe"):            ["mx: '{code} 市盈率'", "browser: https://xueqiu.com/S/{code_raw}"],
+    ("10_valuation", "pe_quantile"):   ["mx: '{code} PE 5年分位数'", "ws: '{code} PE历史分位'"],
+    ("10_valuation", "pb_quantile"):   ["mx: '{code} PB 5年分位数'", "ws: '{code} PB历史分位'"],
+    ("7_industry", "growth"):    ["mx: '{industry} 行业增速 2026'", "ws: '{industry} 行业规模 增速 2026'"],
+    ("14_moat", "scores"):       ["agent: Porter 5 Forces + web search 护城河评分"],
+}
+
+# Enrichment dim recovery hints (when a whole dim is empty).
+_ENRICHMENT_HINTS: dict[str, list[str]] = {
+    "3_macro":        ["ws: '中国 {industry} 宏观环境 利率 2026'"],
+    "4_peers":        ["mx: '{industry} 同行业公司 市值排名'", "ws: '{name} 同行业竞争者 对比'"],
+    "5_chain":        ["browser: https://xueqiu.com/S/{code_raw}/F10", "ws: '{name} 上下游产业链'"],
+    "6_research":     ["mx: '{code} 券商研报 目标价'", "ws: '{name} 最新研报 2026'"],
+    "7_industry":     ["mx: '{industry} 行业规模 TAM'", "ws: '{industry} 行业景气 2026'"],
+    "8_materials":    ["ws: '{name} 原材料 成本构成'"],
+    "9_futures":      ["ws: '{industry} 期货 相关品种'"],
+    "11_governance":  ["mx: '{code} 股东结构 高管减持'", "browser: https://quote.eastmoney.com/{eastmoney_code}.html"],
+    "12_capital_flow":["mx: '{code} 北向持仓 融资融券'", "browser: https://data.eastmoney.com/zlsj/{code_raw}.html"],
+    "13_policy":      ["ws: '{industry} 最新政策 2026'"],
+    "14_moat":        ["ws: '{name} 核心竞争力 技术壁垒 市场份额'"],
+    "15_events":      ["mx: '{code} 最新公告'", "ws: '{name} {code} 最新公告 中标 研发 2026'"],
+    "16_lhb":         ["mx: '{code} 龙虎榜'", "browser: https://data.eastmoney.com/stock/lhb/{code_raw}.html"],
+    "17_sentiment":   ["browser: https://xueqiu.com/S/{code_raw}", "ws: 'site:xueqiu.com {code}'"],
+    "18_trap":        ["infer: 从龙虎榜+换手率+涨跌幅综合判断"],
+    "19_contests":    ["ws: '{code} 实盘比赛 持仓'"],
+}
+
+
+def generate_recovery_tasks(raw: dict, integrity: dict) -> list[dict]:
+    """Turn an integrity report into agent-actionable recovery tasks.
+
+    Each task is self-contained with context (code, industry, name) baked in,
+    so an agent can execute it without re-reading raw_data. Severity ordering
+    lets the agent focus on critical gaps first.
+
+    Returns:
+        list[{"dim", "field", "label", "severity", "suggested_actions", "status"}]
+    """
+    dims = raw.get("dimensions", {}) or {}
+    basic = (dims.get("0_basic") or {}).get("data") or {}
+    code = basic.get("code") or raw.get("ticker") or ""
+    industry = (dims.get("7_industry") or {}).get("data", {}).get("industry") or basic.get("industry") or "综合"
+    name = basic.get("name") or raw.get("ticker") or code
+    code_raw = code.split(".")[0] if "." in code else code
+    # EastMoney uses 0/1 prefix for SZ/SH
+    eastmoney_code = (("1." if code.endswith(".SH") else "0.") + code_raw) if code_raw else ""
+
+    ctx = {
+        "code": code,
+        "code_raw": code_raw,
+        "eastmoney_code": eastmoney_code,
+        "name": name,
+        "industry": industry,
+    }
+
+    def _render(actions: list[str]) -> list[str]:
+        rendered = []
+        for a in actions:
+            try:
+                rendered.append(a.format(**ctx))
+            except (KeyError, IndexError):
+                rendered.append(a)
+        return rendered
+
+    tasks: list[dict] = []
+
+    # Critical + optional missing fields
+    for entry in integrity.get("missing_critical", []) + integrity.get("missing_optional", []):
+        key = (entry["dim"], entry["path"])
+        hints = _RECOVERY_HINTS.get(key, ["ws: '{name} {label}'".format(name=name, label=entry["label"])])
+        severity = "critical" if entry in integrity.get("missing_critical", []) else "optional"
+        tasks.append({
+            "dim": entry["dim"],
+            "field": entry["path"],
+            "label": entry["label"],
+            "severity": severity,
+            "suggested_actions": _render(hints),
+            "status": "pending",
+        })
+
+    # Whole-dim enrichment gaps
+    for entry in integrity.get("missing_enrichment", []):
+        hints = _ENRICHMENT_HINTS.get(entry["dim"], ["ws: '{name} {label}'".format(name=name, label=entry["label"])])
+        tasks.append({
+            "dim": entry["dim"],
+            "field": "_entire_dim",
+            "label": entry["label"],
+            "severity": "enrichment",
+            "suggested_actions": _render(hints),
+            "status": "pending",
+        })
+
+    return tasks
+
+
 def format_report(report: dict) -> str:
     """Human-readable integrity report for console output."""
     lines: list[str] = []

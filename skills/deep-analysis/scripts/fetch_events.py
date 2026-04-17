@@ -110,6 +110,44 @@ def _web_search_events(name: str, max_results: int = 6) -> list[dict]:
 
 def main(ticker: str) -> dict:
     ti = parse_ticker(ticker)
+    if ti.market == "H":
+        # v2.5 · HK 走 HKEXNews + 中文 web search 兜底
+        try:
+            from lib.hk_data_sources import fetch_hk_announcements_cached
+            from lib import data_sources as _ds
+            basic = _ds.fetch_basic(ti)
+            company_name = basic.get("name") or basic.get("full_name") or ti.code
+            anns = fetch_hk_announcements_cached(ti.code.zfill(5), limit=20)
+            # web_search 中文公司名补充（多数港股有中文名）
+            ws_events = _web_search_events(company_name) if len(anns) < 5 else []
+            timeline = [f"{a.get('date','—')} · {a.get('title','')[:80]}" for a in anns + ws_events]
+            return {
+                "ticker": ti.full,
+                "data": {
+                    "event_timeline": timeline[:30],
+                    "recent_news": [
+                        {"date": a.get("date", ""), "title": a.get("title", ""),
+                         "url": a.get("url", ""), "source": a.get("source", "hkexnews")}
+                        for a in anns
+                    ],
+                    "recent_notices": [],
+                    "catalysts": [],
+                    "warnings": [],
+                    "_note": (
+                        "HK 公司公告原文走 hkexnews 法定披露源 + 中文 web search 兜底；"
+                        "若需更精确事件抽取，agent 用 Playwright 打开 hkexnews titlesearch.xhtml POST"
+                    ),
+                },
+                "source": "hkexnews + ddgs",
+                "fallback": False,
+            }
+        except Exception as e:
+            return {
+                "ticker": ti.full,
+                "data": {"_err": f"{type(e).__name__}: {str(e)[:120]}"},
+                "source": "hkexnews",
+                "fallback": True,
+            }
     if ti.market != "A":
         return {"ticker": ti.full, "data": {}, "source": "n/a", "fallback": True}
 

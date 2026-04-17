@@ -7,6 +7,7 @@ Install: pip install akshare yfinance pandas requests
 """
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -44,6 +45,70 @@ except ImportError:
     requests = None
 
 
+# ─────────────────────────────────────────────────────────────
+# v2.6 · Tencent qt 通用价格兜底 — 适用于 A/H/U 三市场，简洁稳定
+# qt.gtimg.cn 不需 key、无反爬历史，是 push2 挂掉时的可靠备选
+# 字段格式：v_{prefix}{code}="type~name~code~current~prev~open~vol~..."
+# ─────────────────────────────────────────────────────────────
+def _fetch_price_tencent_qt(market: str, code_raw: str) -> dict:
+    """Returns {price, change_pct, prev_close, open, high, low, pe_ttm?, pb?, name?}.
+
+    Empty dict on any failure. NEVER raises.
+    market: "A" → "sh"/"sz" prefix (decided by code prefix), "H" → "hk", "U" → "us"
+    """
+    if requests is None:
+        return {}
+    if market == "A":
+        prefix = "sh" if code_raw.startswith(("60", "688", "900")) else "sz"
+        symbol = f"{prefix}{code_raw}"
+    elif market == "H":
+        symbol = f"hk{code_raw.zfill(5)}"
+    elif market == "U":
+        symbol = f"us{code_raw}"
+    else:
+        return {}
+    url = f"https://qt.gtimg.cn/q={symbol}"
+    try:
+        r = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200:
+            return {}
+        text = r.content.decode("gbk", errors="replace")
+        if "=" not in text or '"' not in text:
+            return {}
+        # Extract content inside quotes
+        content = text.split("=", 1)[1].strip().rstrip(";").strip().strip('"')
+        parts = content.split("~")
+        if len(parts) < 35:
+            return {}
+        def _f(idx):
+            try:
+                v = parts[idx].strip()
+                return float(v) if v and v != "-" else None
+            except (ValueError, IndexError):
+                return None
+        out = {
+            "name": parts[1] if parts[1] else None,
+            "price": _f(3),
+            "prev_close": _f(4),
+            "open": _f(5),
+            "change_pct": _f(32),
+            "high": _f(33),
+            "low": _f(34),
+        }
+        # PE / PB only present for A-share (and even then only sh prefix)
+        if len(parts) > 39:
+            pe = _f(39)
+            if pe is not None:
+                out["pe_ttm"] = pe
+        if len(parts) > 46:
+            pb = _f(46)
+            if pb is not None:
+                out["pb"] = pb
+        return {k: v for k, v in out.items() if v is not None}
+    except Exception:
+        return {}
+
+
 def _retry(fn, attempts: int = 3, sleep: float = 0.8):
     last_err = None
     for i in range(attempts):
@@ -75,6 +140,44 @@ def _fetch_basic_a(ti: TickerInfo) -> dict:
         raise RuntimeError("akshare not installed")
     out = {"code": ti.full}
     xq_symbol = ("SH" if ti.full.endswith("SH") else "SZ") + ti.code
+
+    # TIER 0 (optional): MX 妙想 Skills Hub — official NLP API. Used when MX_APIKEY is set.
+    # Much more stable than scraping push2.eastmoney.com in Mainland networks.
+    if _mx_available():
+        try:
+            from .mx_api import MXClient
+            client = MXClient()
+            snap = client.fetch_snapshot(ti.code)
+            if snap:
+                # MX returns human-readable keys like "最新价", "总市值", "PE(TTM)"
+                # Normalize into our schema where possible; ignore what we can't map.
+                def _mx_num(*labels):
+                    for lb in labels:
+                        v = snap.get(lb)
+                        if v is None or v == "" or v == "-":
+                            continue
+                        try:
+                            return float(v)
+                        except (ValueError, TypeError):
+                            continue
+                    return None
+
+                price = _mx_num("最新价", "收盘价", "当前价")
+                if price:
+                    out.update({
+                        "name": out.get("name") or (snap.get("_mx_entity") or "").split("(")[0].strip() or None,
+                        "price": price,
+                        "pe_ttm": _mx_num("市盈率(TTM)", "PE(TTM)", "PE"),
+                        "pb": _mx_num("市净率", "PB"),
+                        "market_cap_raw": _mx_num("总市值", "市值"),
+                        "industry": out.get("industry") or snap.get("所属行业") or snap.get("申万行业") or None,
+                    })
+                    mcap_raw = out.get("market_cap_raw")
+                    if mcap_raw:
+                        out["market_cap"] = f"{round(mcap_raw / 1e8, 1)}亿"
+                    out["_fallback_snap"] = "mx-snapshot"
+        except Exception as e:
+            out["_mx_err"] = f"{type(e).__name__}: {str(e)[:120]}"
 
     # PRIMARY: stock_individual_basic_info_xq (XueQiu backend, bypasses eastmoney push2)
     # Aggressive retry: 4 attempts with 2s base delay because XueQiu SSL sometimes flakes
@@ -347,6 +450,22 @@ def _fetch_basic_a(ti: TickerInfo) -> dict:
         except Exception as e:
             out["_baidu_mcap_err"] = str(e)[:80]
 
+    # v2.6 · FINAL FALLBACK · Tencent qt — XueQiu/push2/baidu 全挂时的兜底
+    # 不需 key、无反爬、稳定，特别适合 Codex/海外环境
+    if not out.get("price"):
+        qt = _fetch_price_tencent_qt("A", ti.code)
+        if qt.get("price"):
+            out["price"] = qt["price"]
+            out["change_pct"] = out.get("change_pct") or qt.get("change_pct")
+            out["open"] = out.get("open") or qt.get("open")
+            out["prev_close"] = out.get("prev_close") or qt.get("prev_close")
+            out["high"] = out.get("high") or qt.get("high")
+            out["low"] = out.get("low") or qt.get("low")
+            out["pe_ttm"] = out.get("pe_ttm") or qt.get("pe_ttm")
+            out["pb"] = out.get("pb") or qt.get("pb")
+            out["name"] = out.get("name") or qt.get("name")
+            out["_fallback_snap"] = (out.get("_fallback_snap", "") + "+tencent_qt").lstrip("+")
+
     return out
 
 
@@ -411,20 +530,87 @@ def _known_stock_industry(code: str) -> str | None:
 
 
 def _fetch_basic_hk(ti: TickerInfo) -> dict:
+    """v2.5 · HK basic info via multi-source fallback chain.
+
+    Old version only called ak.stock_hk_spot_em() which goes through push2
+    (blocked in 2026). Now we layer:
+      1. hk_data_sources.fetch_hk_basic_combined  (XQ + EM company profile + EM valuation)
+      2. ak.stock_hk_spot_em (legacy push2 path; kept for price/change_pct if reachable)
+      3. MX妙想 API (if MX_APIKEY set; covers HK too)
+    """
     if ak is None:
         raise RuntimeError("akshare not installed")
-    df = _retry(lambda: ak.stock_hk_spot_em())
-    row = df[df["代码"] == ti.code.zfill(5)]
-    if row.empty:
-        return {"code": ti.full, "name": None}
-    r = row.iloc[0]
-    return {
-        "code": ti.full,
-        "name": r.get("名称"),
-        "price": float(r.get("最新价", 0)),
-        "change_pct": float(r.get("涨跌幅", 0)),
-        "market_cap": r.get("总市值"),
-    }
+
+    code5 = ti.code.zfill(5)
+    out: dict[str, Any] = {"code": ti.full}
+
+    # PRIMARY: multi-source enrichment (industry/PE/PB/mcap/ranks/profile)
+    try:
+        from .hk_data_sources import fetch_hk_basic_combined
+        enriched = fetch_hk_basic_combined(code5)
+        # Merge non-private fields
+        for k, v in enriched.items():
+            if k.startswith("_") or k in ("code5",):
+                continue
+            if v is not None and v != "":
+                out[k] = v
+        if "_ranks" in enriched:
+            out["_ranks"] = enriched["_ranks"]
+        out["_fallback_snap"] = "hk_combined(xq+em_profile+em_valuation)"
+    except Exception as e:
+        out["_hk_combined_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    # SECONDARY: legacy push2 spot for fresh price/change_pct (often blocked, but try)
+    try:
+        df = _retry(lambda: ak.stock_hk_spot_em(), attempts=2, sleep=1.0)
+        row = df[df["代码"] == code5]
+        if not row.empty:
+            r = row.iloc[0]
+            try: out["price"] = float(r.get("最新价", 0)) or out.get("price")
+            except (ValueError, TypeError): pass
+            try: out["change_pct"] = float(r.get("涨跌幅", 0))
+            except (ValueError, TypeError): pass
+            if not out.get("market_cap"):
+                out["market_cap"] = r.get("总市值")
+            if not out.get("name"):
+                out["name"] = r.get("名称")
+    except Exception as e:
+        out["_em_spot_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    # TERTIARY: MX 妙想 API (if available — also covers HK)
+    if _mx_available() and not out.get("price"):
+        try:
+            from .mx_api import MXClient
+            client = MXClient()
+            snap = client.fetch_snapshot(code5)
+            if snap:
+                price = None
+                for k in ("最新价", "收盘价", "现价"):
+                    v = snap.get(k)
+                    if v not in (None, "", "-"):
+                        try:
+                            price = float(v); break
+                        except (ValueError, TypeError):
+                            continue
+                if price:
+                    out["price"] = price
+                out["_fallback_snap"] = (out.get("_fallback_snap", "") + "+mx").lstrip("+")
+        except Exception as e:
+            out["_mx_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    # v2.6 · QUATERNARY · Tencent qt 兜底（HK price 在前 3 层都缺时常发生）
+    if not out.get("price"):
+        qt = _fetch_price_tencent_qt("H", code5)
+        if qt.get("price"):
+            out["price"] = qt["price"]
+            out["change_pct"] = out.get("change_pct") or qt.get("change_pct")
+            out["open"] = out.get("open") or qt.get("open")
+            out["prev_close"] = out.get("prev_close") or qt.get("prev_close")
+            out["high"] = out.get("high") or qt.get("high")
+            out["low"] = out.get("low") or qt.get("low")
+            out["_fallback_snap"] = (out.get("_fallback_snap", "") + "+tencent_qt").lstrip("+")
+
+    return out
 
 
 def _fetch_basic_us(ti: TickerInfo) -> dict:
@@ -769,53 +955,111 @@ def _fetch_research_impl(ti: TickerInfo) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────
-# Top-level: resolve Chinese name → ticker (uses akshare a-share spot table)
+# Top-level: resolve Chinese name → ticker
 # ─────────────────────────────────────────────────────────────
-def resolve_chinese_name(name: str) -> TickerInfo | None:
-    """Resolve Chinese stock name to TickerInfo. Multi-fallback:
-    1. akshare A-share spot table (fast but often blocked)
-    2. akshare stock_info_a_code_name (lighter weight)
-    3. DuckDuckGo search as last resort
+# Is MX (东方财富妙想) API available? Checked at import time for quick gating.
+def _mx_available() -> bool:
+    """Checked at call-time so callers can set MX_APIKEY after import (e.g. from .env)."""
+    return bool(os.environ.get("MX_APIKEY"))
+
+
+# Back-compat constant (some callers may reference it).
+MX_AVAILABLE = _mx_available()
+
+
+def resolve_chinese_name_rich(name: str) -> dict:
+    """Resolve a Chinese stock name with full candidate info for user-facing suggestions.
+
+    Returns:
+        {"resolved":    TickerInfo | None,   # set only on confident match
+         "candidates":  list[dict],           # up to 5 candidates for UI disambiguation
+         "source":      "mx"|"exact"|"fuzzy"|"none",
+         "user_input":  name}
+
+    Match order (most accurate first):
+        1. MX 妙想 API — official NLP, handles character-order typos ("北部港湾"→"北部湾港")
+        2. akshare exact substring (preserves legacy behaviour for valid names)
+        3. local Levenshtein fuzzy match against the full A-share name index
+
+    Callers that need the legacy `TickerInfo | None` signature should use
+    `resolve_chinese_name()` (thin wrapper).
     """
-    # Fallback 1: akshare spot table
-    if ak is not None:
+    user_input = name
+
+    # Tier 1: MX API
+    if _mx_available():
         try:
-            df = ak.stock_zh_a_spot_em()
-            row = df[df["名称"].str.contains(name, na=False)]
-            if not row.empty:
-                code = str(row.iloc[0]["代码"])
-                return parse_ticker(code)
+            from .mx_api import MXClient
+            client = MXClient()
+            hits = client.resolve_entity(name)
+            if hits:
+                h = hits[0]
+                ti = parse_ticker(h["secuCode"])
+                cands = [
+                    {"code": x["secuCode"], "name": x["fullName"],
+                     "distance": 0, "source": "mx"}
+                    for x in hits[:5]
+                ]
+                return {"resolved": ti, "candidates": cands,
+                        "source": "mx", "user_input": user_input}
         except Exception:
             pass
 
-    # Fallback 2: akshare code-name mapping (smaller, less likely to be blocked)
+    # Tier 2: akshare exact substring (legacy)
     if ak is not None:
-        try:
-            df = ak.stock_info_a_code_name()
-            row = df[df["name"].str.contains(name, na=False)] if "name" in df.columns else df[df.iloc[:, 1].str.contains(name, na=False)]
-            if not row.empty:
-                code = str(row.iloc[0].iloc[0])  # first column = code
-                return parse_ticker(code)
-        except Exception:
-            pass
+        for fetch in (
+            lambda: ak.stock_zh_a_spot_em(),
+            lambda: ak.stock_info_a_code_name(),
+        ):
+            try:
+                df = fetch()
+                if df is None or df.empty:
+                    continue
+                name_col = "名称" if "名称" in df.columns else ("name" if "name" in df.columns else df.columns[1])
+                code_col = "代码" if "代码" in df.columns else ("code" if "code" in df.columns else df.columns[0])
+                row = df[df[name_col].astype(str).str.contains(name, na=False)]
+                if not row.empty:
+                    code = str(row.iloc[0][code_col])
+                    matched_name = str(row.iloc[0][name_col])
+                    ti = parse_ticker(code)
+                    return {"resolved": ti,
+                            "candidates": [{"code": ti.full, "name": matched_name,
+                                            "distance": 0, "source": "exact"}],
+                            "source": "exact", "user_input": user_input}
+            except Exception:
+                continue
 
-    # Fallback 3: DuckDuckGo search
+    # Tier 3: local fuzzy match
     try:
-        from duckduckgo_search import DDGS
-        with DDGS() as ddgs:
-            query = f"{name} A股 股票代码"
-            results = list(ddgs.text(query, max_results=3))
-            import re
-            for r in results:
-                text = f"{r.get('title', '')} {r.get('body', '')}"
-                # Match 6-digit stock codes
-                codes = re.findall(r'\b([036]\d{5})\b', text)
-                if codes:
-                    return parse_ticker(codes[0])
+        from .name_matcher import fuzzy_match
+        hits = fuzzy_match(name, top_k=5, max_distance=2)
     except Exception:
-        pass
+        hits = []
+    if hits:
+        cands = [
+            {"code": parse_ticker(h["code"]).full, "name": h["name"],
+             "distance": h["distance"], "source": "fuzzy"}
+            for h in hits
+        ]
+        # Only auto-resolve if a single dominant candidate (distance 0, or uniquely closer)
+        auto = None
+        if hits[0]["distance"] == 0:
+            auto = parse_ticker(hits[0]["code"])
+        return {"resolved": auto, "candidates": cands,
+                "source": "fuzzy", "user_input": user_input}
 
-    return None
+    return {"resolved": None, "candidates": [],
+            "source": "none", "user_input": user_input}
+
+
+def resolve_chinese_name(name: str) -> TickerInfo | None:
+    """Legacy shim. Returns TickerInfo only when we are confident (MX/exact/fuzzy-d=0).
+
+    For ambiguous matches, callers should use `resolve_chinese_name_rich()` to
+    see the candidate list and ask the user.
+    """
+    r = resolve_chinese_name_rich(name)
+    return r["resolved"]
 
 
 if __name__ == "__main__":

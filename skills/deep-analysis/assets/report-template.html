@@ -123,6 +123,36 @@ body::after {
 .market-badge.open { background: var(--bull-tint); color: var(--bull-green); border: 1px solid var(--bull-green); }
 .market-badge.closed { background: var(--bg-tinted); color: var(--text-dim); border: 1px solid var(--border); }
 
+/* ═══════════════ DATA QUALITY BANNER · v2.3 ═══════════════ */
+.data-gap-banner {
+  margin: 16px 0 24px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.04));
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.data-gap-banner .icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
+.data-gap-banner .body { flex: 1; }
+.data-gap-banner .title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px; color: #f59e0b; margin-bottom: 4px; letter-spacing: .04em; }
+.data-gap-banner .subtitle { font-size: 13px; color: var(--text-bright); line-height: 1.6; }
+.data-gap-banner .subtitle strong { color: #f59e0b; }
+.data-gap-banner .list { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.data-gap-banner .chip {
+  font-family: 'Fira Code', monospace;
+  font-size: 11px;
+  padding: 3px 10px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 999px;
+}
+.data-gap-banner .chip.ack { background: rgba(148, 163, 184, 0.15); color: var(--text-dim); border-color: var(--border); text-decoration: line-through; }
+.data-gap-banner .hint { margin-top: 8px; font-size: 11px; color: var(--text-dim); letter-spacing: .05em; }
+
 /* ═══════════════ BENTO HERO ═══════════════ */
 .bento-hero {
   display: grid;
@@ -1254,6 +1284,92 @@ body::after {
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 16px;
 }
+
+/* ═══ v2.4 · 紧凑行列表（展开后排名 7+ 的基金显示） ═══ */
+.fund-compact-list {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  max-height: 600px;
+  overflow-y: auto;
+  background: var(--bg-card);
+}
+.fund-compact-head,
+.fund-compact-row {
+  display: grid;
+  grid-template-columns: 44px 40px minmax(0, 2fr) 96px 100px 32px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.fund-compact-head {
+  background: var(--bg-tinted);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.fund-compact-row { transition: background .15s ease; }
+.fund-compact-row:hover { background: var(--gold-tint); }
+.fund-compact-row:last-child { border-bottom: none; }
+.fc-rank {
+  width: 36px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+.fc-avatar {
+  width: 32px; height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+  background: #fff;
+  flex-shrink: 0;
+}
+.fc-avatar-ph {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Fira Sans', sans-serif;
+  font-size: 14px; font-weight: 800;
+  color: var(--neon-gold);
+  background: var(--gold-tint);
+}
+.fc-info { min-width: 0; overflow: hidden; }
+.fc-name {
+  font-family: 'Fira Sans', sans-serif;
+  font-weight: 700; font-size: 13px;
+  color: var(--text-bright);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fc-fund {
+  font-family: 'Fira Sans', sans-serif;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fc-return, .fc-rank-pct {
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+}
+.fc-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--neon-cyan);
+  font-size: 18px;
+  transition: all .15s ease;
+}
+.fc-link:hover { background: var(--gold-tint); color: var(--neon-gold); transform: translateX(2px); }
 .fund-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -2125,9 +2241,12 @@ footer strong { color: var(--text-dim); }
     <div class="status">
       <span class="pulse"></span>
       <span class="market-badge {{MARKET_STATUS_CLASS}}">{{MARKET_STATUS}}</span>
-      <span>· DATA @ {{DATA_FETCHED_AT}} · v0.1.0</span>
+      <span>· DATA @ {{DATA_FETCHED_AT}} · UZI v{{PLUGIN_VERSION}}</span>
     </div>
   </div>
+
+  <!-- ─── DATA QUALITY BANNER · v2.3 (only rendered when _data_gaps.json exists) ─── -->
+  <!-- INJECT_DATA_GAP_BANNER -->
 
   <!-- ─── BENTO HERO ─── -->
   <div class="bento-hero">

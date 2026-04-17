@@ -26,8 +26,46 @@ def _safe(fn, default):
 
 def main(ticker: str) -> dict:
     ti = parse_ticker(ticker)
+    if ti.market == "H":
+        # v2.5 · HK 港股通南北向标记 + 历史每日市值（净值变动 proxy）
+        # akshare 港股通南北向 spot (stock_hsgt_sh_hk_spot_em) 走 push2 已 blocked，
+        # 这里用 stock_hk_security_profile_em 拿"是否沪/深港通标的"标记 + eniu 历史市值。
+        from lib.hk_data_sources import fetch_hk_basic_combined
+        try:
+            enriched = fetch_hk_basic_combined(ti.code.zfill(5))
+        except Exception:
+            enriched = {}
+        is_sh = enriched.get("is_south_bound_sh", False)
+        is_sz = enriched.get("is_south_bound_sz", False)
+        # eniu 市值历史（近 30 个数据点作为南北向资金流的 proxy）
+        mv_hist: list = []
+        try:
+            import akshare as _ak  # type: ignore
+            df = _ak.stock_hk_indicator_eniu(symbol=f"hk{ti.code.zfill(5)}", indicator="市值")
+            if df is not None and not df.empty:
+                mv_hist = df.tail(30).to_dict("records")
+        except Exception:
+            pass
+        return {
+            "ticker": ti.full,
+            "data": {
+                "is_south_bound_sh": is_sh,
+                "is_south_bound_sz": is_sz,
+                "south_bound_eligibility": "沪+深" if (is_sh and is_sz) else ("沪" if is_sh else ("深" if is_sz else "—")),
+                "north_bound": "—",
+                "margin_balance": "—",
+                "main_flow_recent": [],
+                "mv_history_30d": mv_hist[-30:],
+                "_note": (
+                    "HK 南向具体持股变动需走 AASTOCKS Playwright 或 hkexnews holdings page；"
+                    "本字段提供港股通资格 + eniu 市值历史作 proxy。"
+                ),
+            },
+            "source": "akshare:stock_hk_security_profile_em + stock_hk_indicator_eniu",
+            "fallback": False,
+        }
     if ti.market != "A":
-        return {"ticker": ti.full, "data": {"_note": "capital_flow only A-share for now"}, "source": "skip", "fallback": False}
+        return {"ticker": ti.full, "data": {"_note": "capital_flow only A-share / HK for now"}, "source": "skip", "fallback": False}
 
     north = ds.fetch_northbound(ti)
 

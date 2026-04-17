@@ -24,6 +24,24 @@ def _safe(v, default="—"):
     return v if v not in (None, "", "nan") else default
 
 
+# v2.6 · Read version from plugin manifest so report banner stays in sync
+_PLUGIN_VERSION_CACHE = None
+def _get_plugin_version() -> str:
+    global _PLUGIN_VERSION_CACHE
+    if _PLUGIN_VERSION_CACHE is not None:
+        return _PLUGIN_VERSION_CACHE
+    try:
+        # ROOT = skills/deep-analysis · ROOT.parent.parent = repo root
+        manifest = ROOT.parent.parent / ".claude-plugin" / "plugin.json"
+        if manifest.exists():
+            _PLUGIN_VERSION_CACHE = json.loads(manifest.read_text(encoding="utf-8")).get("version", "?")
+            return _PLUGIN_VERSION_CACHE
+    except Exception:
+        pass
+    _PLUGIN_VERSION_CACHE = "?"
+    return _PLUGIN_VERSION_CACHE
+
+
 GROUP_LABELS = {"A": "价值", "B": "成长", "C": "宏观", "D": "技术", "E": "中国", "F": "游资", "G": "量化"}
 
 
@@ -1842,21 +1860,79 @@ def render_fund_managers(managers: list) -> str:
     if len(cards) <= INITIAL_SHOW:
         return header + f'<div class="fund-mgr-grid">{"".join(cards)}</div>'
 
-    # Show first 6, hide rest behind expand button
+    # v2.4 · Top 6 用完整卡片；第 7 位起切换到紧凑行（头像+名字+5Y 收益+同类排名）
+    # 理由：热门股有 100+ 基金持有，全用大卡会把报告撑爆
     visible = "".join(cards[:INITIAL_SHOW])
-    hidden = "".join(cards[INITIAL_SHOW:])
+    compact_rows = [
+        _render_fund_compact_row(m, rank=i + 1 + INITIAL_SHOW)
+        for i, m in enumerate(managers_sorted[INITIAL_SHOW:])
+    ]
     hidden_count = len(cards) - INITIAL_SHOW
     uid = f"fm_{abs(hash(str(len(cards))))}"
 
     return header + f'''
     <div class="fund-mgr-grid">{visible}</div>
-    <div id="{uid}" class="fund-mgr-grid" style="display:none">{hidden}</div>
+    <div id="{uid}" class="fund-compact-list" style="display:none">
+      <div class="fund-compact-head">
+        <span class="fc-h-rank">#</span>
+        <span class="fc-h-avatar"></span>
+        <span class="fc-h-name">基金经理 / 基金</span>
+        <span class="fc-h-metric">5Y 累计</span>
+        <span class="fc-h-metric">同类排名</span>
+        <span class="fc-h-link"></span>
+      </div>
+      {"".join(compact_rows)}
+    </div>
     <div style="text-align:center;margin:16px 0">
-      <button onclick="var el=document.getElementById('{uid}');var btn=this;if(el.style.display==='none'){{el.style.display='grid';btn.textContent='收起 ▲'}}else{{el.style.display='none';btn.textContent='展开剩余 {hidden_count} 位基金经理 ▼'}}"
+      <button onclick="var el=document.getElementById('{uid}');var btn=this;if(el.style.display==='none'){{el.style.display='block';btn.textContent='收起 ▲'}}else{{el.style.display='none';btn.textContent='展开剩余 {hidden_count} 位（按 5Y 收益排名）▼'}}"
         style="background:#f59e0b;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s">
-        展开剩余 {hidden_count} 位基金经理 ▼
+        展开剩余 {hidden_count} 位（按 5Y 收益排名）▼
       </button>
     </div>'''
+
+
+def _render_fund_compact_row(m: dict, rank: int) -> str:
+    """One-line strip for fund managers ranked 7+. Used in expanded compact list.
+
+    Reuses color/percentile logic from render_fund_managers so styling stays in sync.
+    """
+    name = m.get("name", "—")
+    fund_name = m.get("fund_name", "—")
+    fund_code = m.get("fund_code", "")
+    avatar = m.get("avatar", "")
+    ret_5y = m.get("return_5y", 0) or 0
+    peer_rank = m.get("peer_rank_pct", 50) or 50
+
+    ret_color = COLOR_BULL if ret_5y > 0 else COLOR_BEAR
+    rank_color = COLOR_BULL if peer_rank < 20 else COLOR_GOLD if peer_rank < 50 else COLOR_BEAR
+
+    # rank badge: top 3 gold, 4-10 silver, rest plain
+    if rank <= 3:
+        badge_style = "background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff"
+    elif rank <= 10:
+        badge_style = "background:#e2e8f0;color:#475569"
+    else:
+        badge_style = "background:#f1f5f9;color:#64748b"
+
+    if avatar:
+        avatar_html = f'<img src="avatars/{avatar}.svg" class="fc-avatar" alt="">'
+    else:
+        avatar_html = f'<div class="fc-avatar fc-avatar-ph">{name[0] if name else "?"}</div>'
+
+    fund_url = m.get("fund_url", f"https://fund.eastmoney.com/{fund_code}.html")
+    sign = "+" if ret_5y > 0 else ""
+
+    return f'''<div class="fund-compact-row">
+  <span class="fc-rank" style="{badge_style}">{rank}</span>
+  {avatar_html}
+  <div class="fc-info">
+    <div class="fc-name">{name}</div>
+    <div class="fc-fund">{fund_name}</div>
+  </div>
+  <span class="fc-return" style="color:{ret_color}">{sign}{ret_5y:.1f}%</span>
+  <span class="fc-rank-pct" style="color:{rank_color}">前 {peer_rank}%</span>
+  <a href="{fund_url}" target="_blank" rel="noopener" class="fc-link" title="查看基金详情">→</a>
+</div>'''
 
 
 def render_debate_rounds(debate: dict) -> str:
@@ -2255,6 +2331,63 @@ def _render_competitive_analysis(dim22: dict) -> str:
     '''
 
 
+def _render_data_gap_banner(data_gaps: dict | None) -> str:
+    """v2.3 · Render orange banner listing data gaps. Returns empty string if no gaps.
+
+    Reads synthesis.data_gaps which is populated in stage2() from _data_gaps.json
+    (produced by data_integrity.generate_recovery_tasks). The banner tells readers
+    upfront that the report has known holes — no silent fake numbers.
+    """
+    if not isinstance(data_gaps, dict) or not data_gaps.get("tasks"):
+        return ""
+
+    tasks = data_gaps["tasks"]
+    total = len(tasks)
+    unresolved = data_gaps.get("unresolved", total)
+    ack = total - unresolved
+    cov = data_gaps.get("coverage_pct", 0)
+
+    # Build chip list — critical first, then optional, then enrichment
+    order = {"critical": 0, "optional": 1, "enrichment": 2}
+    sorted_tasks = sorted(tasks, key=lambda t: (order.get(t.get("severity"), 9), t.get("dim", "")))
+    chips_html: list[str] = []
+    for t in sorted_tasks[:20]:
+        cls = "chip"
+        if t.get("status") == "acknowledged":
+            cls += " ack"
+        chips_html.append(f'<span class="{cls}">{t.get("label","?")} · {t.get("dim","?")}</span>')
+    chips_block = "\n      ".join(chips_html)
+    overflow = ""
+    if len(sorted_tasks) > 20:
+        overflow = f'<span class="chip">+{len(sorted_tasks) - 20} 更多</span>'
+
+    subtitle = (
+        f"数据覆盖率 <strong>{cov}%</strong> · "
+        f"共 <strong>{total}</strong> 个字段未从脚本采集到"
+    )
+    if ack:
+        subtitle += f"（其中 <strong>{ack}</strong> 已由 agent 确认"
+        subtitle += "真的拿不到）"
+
+    hint = (
+        "Agent 已尝试浏览器抓取 / MX API / WebSearch / 逻辑推导；"
+        "划线字段为已确认无法补齐，其余字段显示为 “—”。"
+    )
+
+    return f'''<div class="data-gap-banner" role="alert">
+  <div class="icon">⚠️</div>
+  <div class="body">
+    <div class="title">DATA QUALITY · 本报告存在已知数据缺口</div>
+    <div class="subtitle">{subtitle}</div>
+    <div class="list">
+      {chips_block}
+      {overflow}
+    </div>
+    <div class="hint">{hint}</div>
+  </div>
+</div>'''
+
+
 def _render_institutional_section(raw: dict) -> str:
     """Combined dim 20/21/22 renderer — returns the full institutional modeling block."""
     dims = raw.get("dimensions", {}) or {}
@@ -2375,6 +2508,7 @@ def assemble(ticker: str) -> Path:
         "{{MARKET_STATUS}}": market_status().get("label", ""),
         "{{MARKET_STATUS_CLASS}}": "open" if market_status().get("is_open") else "closed",
         "{{DATA_FETCHED_AT}}": (raw.get("fetched_at") or "")[:19].replace("T", " "),
+        "{{PLUGIN_VERSION}}": _get_plugin_version(),
     }
     for k, v in replacements.items():
         template = template.replace(k, str(v))
@@ -2430,6 +2564,12 @@ def assemble(ticker: str) -> Path:
     template = template.replace(
         "<!-- INJECT_INSTITUTIONAL_MODELING -->",
         _render_institutional_section(raw),
+    )
+
+    # v2.3 · Data quality banner (only renders when synthesis.data_gaps present)
+    template = template.replace(
+        "<!-- INJECT_DATA_GAP_BANNER -->",
+        _render_data_gap_banner(syn.get("data_gaps")),
     )
 
     date = datetime.now().strftime("%Y%m%d")

@@ -117,9 +117,128 @@ Stage 1 跑完后，你必须：
 | Gemini | `GEMINI.md` |
 | Claude Code | `.claude-plugin/plugin.json` |
 
+## 🌐 网络受限环境（重要 · v2.4 新增）
+
+UZI-Skill 既可能在**中国大陆**运行，也可能在 **Codex / 海外云容器**里运行，
+两类环境的网络瓶颈不同，agent 遇到错误时要按情况切换。
+
+### 场景 A · 大陆网络 / 校园 / 公司代理
+
+**症状**：`pip install` 超时、SSL handshake 失败、`pypi.org` 连不上。
+
+**处理**：按顺序尝试国内 pip 镜像（`run.py` 和 `setup.sh` 已经会自动 fallback，
+但在 agent 环境你可能要手动指定）：
+
+```bash
+# 清华（推荐）
+pip install -r requirements.txt \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn
+
+# 阿里云（兜底）
+pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+
+# 中科大
+pip install -r requirements.txt -i https://pypi.mirrors.ustc.edu.cn/simple/
+```
+
+数据源通常都通（akshare / xueqiu / eastmoney），个别被反爬的子域（如
+`push2.eastmoney.com`）可能 Empty reply — **设置 `MX_APIKEY` 启用东财
+妙想官方 API** 作为主数据源，见 `.env.example`。
+
+### 场景 B · Codex / 海外 agent 容器
+
+**症状**：`pip install` 很快，但跑分析时 `akshare` 报 timeout、
+`push2.eastmoney.com` 不通、`cninfo.com.cn` DNS 失败。
+
+**处理**：国内数据源从海外访问有时反被 GFW 限制。按以下顺序尝试：
+
+1. **启用 MX_APIKEY**（最稳）— 妙想 API 走境内外都可达的 `mkapi2.dfcfs.com`
+2. `yfinance` 兜底美股/港股
+3. `WebSearch` + `Chrome/Playwright MCP` 打开以下备用入口抓 HTML：
+   - 雪球：`https://xueqiu.com/S/{code}`（走 CDN，境外可访问）
+   - 腾讯财经：`https://stockapp.finance.qq.com/mstats/`
+   - 同花顺（F10 页）：`https://stockpage.10jqka.com.cn/{code}/`
+
+### 场景 C · pip 和数据源都不通（双失败）
+
+agent 应该：
+1. 明确告诉用户："当前网络环境无法访问 pypi 和东财，建议切换到中国大陆 IP 或配置 MX_APIKEY"
+2. 不要尝试用未验证的 VPN / 代理，不要绕过用户网络策略
+3. 保留 `_data_gaps.json` + `_resolve_error.json`，下次网络恢复后可以直接 `stage2()` 生成报告
+
+### 环境侦测快速命令
+
+agent 在不确定环境时，可先跑这几条探测：
+
+```bash
+# pypi 连通性
+curl -sS --max-time 5 -o /dev/null -w "pypi: %{http_code}\n" https://pypi.org/simple/
+# 国内镜像连通性
+curl -sS --max-time 5 -o /dev/null -w "tuna: %{http_code}\n" https://pypi.tuna.tsinghua.edu.cn/simple/
+# 东财 push2（最常被挡）
+curl -sS --max-time 5 -o /dev/null -w "push2: %{http_code}\n" https://push2.eastmoney.com/api/qt/stock/get
+# 东财其他域
+curl -sS --max-time 5 -o /dev/null -w "quote-em: %{http_code}\n" https://quote.eastmoney.com/
+curl -sS --max-time 5 -o /dev/null -w "xueqiu: %{http_code}\n" https://xueqiu.com/
+# 妙想 API
+curl -sS --max-time 5 -o /dev/null -w "mx: %{http_code}\n" https://mkapi2.dfcfs.com/
+```
+
+根据哪些通/哪些不通，决定走哪个数据链。
+
+## 📚 数据源速查表（v2.5 新增）
+
+完整源清单在 `lib/data_source_registry.py`（40+ 源 · 3 tier）。常见 dim 推荐路径如下，
+agent 选择源时按"主源 → 备源 → 浏览器源"顺序，failed 自动 fallthrough：
+
+| Dim | A 股 主源 | A 股 备源 | A 股 浏览器源 | H 股主源 |
+|---|---|---|---|---|
+| 0_basic | xq_api (akshare) | mx_api / em_quote | xueqiu_f10 | hk_data_sources combined (XQ + EM profile + EM valuation) |
+| 2_kline | em_data + akshare | baostock / tencent_qt | — | akshare hk_hist |
+| 4_peers | akshare board_industry | em_data | iwencai / ths_f10 | hk_valuation_comparison_em (rank-only) + AASTOCKS (Playwright) |
+| 6_research | em_data + cninfo | hexun / stockstar | xueqiu_f10 | (HK 限) yicai / cls |
+| 12_capital_flow | em_data 北向 + akshare | — | yuncaijing | hk_security_profile (港股通标记) + AASTOCKS Playwright |
+| 13_policy | gov_cn + cninfo | csrc / miit / ndrc | — | (同 A) + cls 7x24 + wallstreetcn |
+| 15_events | cninfo + em_data | xq_api / cls / yicai | xueqiu_f10 | hkexnews + AASTOCKS Playwright |
+| 16_lhb | akshare lhb + em_data | — | yuncaijing | (HK 无 LHB 概念，看南北向替代) |
+| 17_sentiment | xq_api / ddgs | wallstreetcn | xueqiu_f10 | futu (Playwright) / xq_api |
+
+**用法（在 sub-agent prompt 里）**：
+```python
+from lib.data_source_registry import http_sources_for, playwright_sources_for, by_dim
+
+# Tier-1 HTTP 源，按 health 排序
+sources = http_sources_for("4_peers", "A")
+for s in sources:
+    print(s.id, s.base_url, s.health, s.notes)
+
+# 当 HTTP 全失败时，agent 启动 Playwright 用 tier-2 源：
+browser_sources = playwright_sources_for("4_peers", "A")
+```
+
+**港股增强（v2.5 新加）**：
+- `lib/hk_data_sources.py` 包装了之前未用到的 50+ akshare HK 函数
+- `_fetch_basic_hk` 现在能拿到 industry / PE / PB / 市值 / 排名 / 公司介绍
+- `fetch_peers.py` HK 分支返回 rank-in-HK-universe（具体同行 list 走 AASTOCKS Playwright）
+- `fetch_capital_flow.py` HK 分支返回港股通资格 + 30 日市值变化
+- `fetch_events.py` HK 分支抓 HKEXNews + 中文 web search 兜底
+
+## ⚙️ v2.6 论坛 bug 修复速查（重要 · 影响 agent 行为）
+
+| 论坛 bug | 修了什么 | agent 仍要做什么 |
+|---|---|---|
+| 失败卡死 | per-fetcher 90s timeout | 不要重试 timeout 维度，让 _data_gaps.json 触发恢复 |
+| 中断不能续 | `--resume` 默认开 | 第二次跑同股 agent 应直接调 stage2 (raw_data 已有) |
+| 非 Claude 评委对齐错位 | schema validator 写 `_agent_analysis_errors.json` | 跑完 stage2 看 console 是否有 🔴 错误，按 `_agent_analysis_errors.json` suggestion 改 |
+| 编造事实（药明康德↔Apple） | HARD-GATE-FACTCHECK | 每条 commentary cite raw_data 出处，不确定的不要肯定语气 |
+| Codex 兼容差 | run.py 自动 Codex 检测 + mini_racer 锁 | Codex 环境必设 `MX_APIKEY`，不要 `--no-resume` |
+| Claude plugin 不能执行 | hooks.json 直调 session-start | 装完跑 `chmod +x hooks/session-start` |
+
 ## 注意
 
 - A 股：`600519.SH` / `002273.SZ` / `贵州茅台`
 - 港股：`00700.HK`
 - 美股：`AAPL`
-- 不需要 API key
+- 不需要 API key（但**建议设置 `MX_APIKEY`** 提高稳定性，特别是 Codex/海外环境）
+- v2.6 默认 `--resume` · 强制重抓加 `--no-resume`

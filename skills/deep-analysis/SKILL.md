@@ -31,6 +31,106 @@ description: 个股深度分析的核心工作流。当用户要求"深度分析
 5. **矛盾必须呈现，不准和稀泥**：DCF 与 Comps 结论冲突时，**把冲突写进报告**；51 评委分歧大时，**强调分歧本身是信息**。
 6. **Task 1 必须并行执行**（4 个子 agent / wave），串行跑 22 个 fetcher 直接扣分。
 
+### ⛔ HARD-GATE-NAME · 股票名纠错（v2.3）
+
+<HARD-GATE>
+若 `stage1()` 返回 `{"status": "name_not_resolved", "candidates": [...]}`（或生成了
+`.cache/{input}/_resolve_error.json`），你**绝不能**假装猜到正确股票继续跑。
+
+你必须：
+1. 读 `_resolve_error.json` 拿到 `user_input` 和候选列表
+2. 用 `AskUserQuestion` 把 Top 3-5 候选呈现给用户（"你是不是想输入 X？"）
+3. 用户确认后，用**选中的代码**（如 `000582.SZ`）而不是原始名字重跑 `stage1()`
+4. 若候选为空（真查不到），告知用户并建议直接输入代码
+
+唯一例外：用户原话含"自动选最相近的"或明确说"就是 Top1" — 此时可以不问
+</HARD-GATE>
+
+### ⛔ HARD-GATE-QUALITATIVE · 6 维定性维度必须 agent 深度分析（v2.4）
+
+<HARD-GATE>
+在 stage2 之前，**3_macro / 7_industry / 8_materials / 9_futures / 13_policy / 15_events**
+这 6 个定性维度必须由 agent 做跨域联想 + 多源抓取后产出结构化分析，不得直接用爬虫片段
+拼到 dim_commentary 里。
+
+**强制流程**（详见 `references/task2.5-qualitative-deep-dive.md`）：
+
+1. 读 `task2.5-qualitative-deep-dive.md` — 这是详尽操作手册（6 维每维 4-7 问、6 条跨域
+   因果链、各维度浏览器 URL 模板、输出 schema）
+2. **Spawn 3 个并行 sub-agent**（Agent tool · subagent_type=general-purpose）：
+   - **A · Macro-Policy**：3_macro + 13_policy
+   - **B · Industry-Events**：7_industry + 15_events
+   - **C · Cost-Transmission**：8_materials + 9_futures
+3. 每个 sub-agent 必须使用：
+   - `WebSearch`（精确到公司名 + 代码 + 行业关键词）
+   - `Chrome/Playwright MCP`（打开 cninfo/xueqiu/gov.cn/证监会/工信部 抓原文）
+   - `mx_api.MXClient`（若 `MX_APIKEY` 已设置）
+4. 合并三个 sub-agent 的输出，写入 `.cache/{ticker}/agent_analysis.json` 的
+   `qualitative_deep_dive` 字段（schema 见 task2.5 第 5 节）
+5. **质量硬红线**：
+   - 每维 `evidence` ≥ 2 条且每条必有具体 URL
+   - 6 维合计 ≥ 3 条 `associations`（跨域因果链，对应 task2.5 第 3 节的 6 条里选 3）
+   - `dim_commentary` 每句必须 cite `qualitative_deep_dive.*.evidence[*].url` 之一
+
+**绝对禁止**：
+- 单 agent 串行覆盖 6 维（必须 3 个并行 sub-agent）
+- 把 raw_data 的爬虫片段直接粘贴当 commentary
+- evidence 为空、url 空字符串、或仅用"值得关注/基本面良好/需要观察"这三个废话词
+- 跳过 task2.5 的问题清单自由发挥
+
+用户要求原话："不能只靠数据爬取，必须要 agent 介入高强度分析 + 多 agent 操作一定要加入进去"
+</HARD-GATE>
+
+### ⛔ HARD-GATE-FACTCHECK · 禁止编造未在 raw_data 出现的事实（v2.6）
+
+<HARD-GATE>
+论坛反馈过实际事件：分析"药明康德"时把它和"苹果订单"关联（药明康德是 CRO 不是
+果链供应商）。这是 LLM 联想编造典型。
+
+每条 dim_commentary / debate_say / risks 必须满足：
+1. 引用的公司业务必须在 `raw_data.dimensions["0_basic"].data.main_business`
+   或 `["5_chain"]` 或 `["15_events"]` 中能找到出处
+2. 引用的财务数字必须在 `["1_financials"]` 中
+3. 引用的政策必须在 `["13_policy"]` snippets 里
+4. 不确定的关联用 "据公开报道"/"待 web search 验证" 而不是肯定语气
+5. 任何"X 公司是 Y 行业供应链一环"这种宏大叙事，必须 cite raw_data 里的具体证据
+
+绝对禁止：
+- "X（光学公司）受益于 Apple 订单" — 除非 raw_data 里有 Apple 客户关联
+- "Y 公司是新能源核心标的" — 除非 raw_data 提到具体新能源业务
+- "国家战略支持本股" — 除非 dim_policy 有具体政策原文 cite
+
+非 Claude 模型（Codex/国产模型）尤其容易踩这个坑。stage2 不会自动检测事实正确性，
+质量靠 agent 自查。
+</HARD-GATE>
+
+### ⛔ HARD-GATE-DATAGAPS · 数据缺口 agent 必须接管（v2.3）
+
+<HARD-GATE>
+若 `.cache/{ticker}/_data_gaps.json` 存在且 `tasks` 非空，你**必须**在调用
+`stage2()` 之前逐条尝试补齐，按优先级：
+
+1. **浏览器自动化**（最稳）— 用 Chrome/Playwright MCP 打开 xueqiu.com/S/{code}
+   或 quote.eastmoney.com/{code}.html 手动抓字段。特别是 `push2.eastmoney.com`
+   被反爬时，浏览器是唯一能拿到实时行情的通道。
+2. **MX 妙想 API**（若 `MX_APIKEY` 已设置）— 用 `mx_api.MXClient.query()`
+3. **WebSearch** 精确到代码（不要只搜公司名 — 会命中同名无关内容）
+4. **逻辑推导** — 从已有数据算（净利率 = 净利润 / 营收；PE = 市值/净利润）
+
+**仍然拿不到的字段**：在 `agent_analysis.json` 里写：
+```json
+"data_gap_acknowledged": {
+  "0_basic.industry": "已尝试 xueqiu/eastmoney/ws，均返回空 — 可能是新股或暂停上市",
+  "4_peers": "该细分行业上市公司不足 3 家，真的找不到同行"
+}
+```
+stage2 会把这些字段标为"已确认拿不到"，HTML 报告显示划线 chip + "—"而不是假数据。
+
+**绝对禁止**：在补不到数据时用默认值（0 / 空字符串 / "—"）当真实数据用、让规则引擎
+对空 features 打分（会产生"没数据的幻觉"，像之前"北部港湾"那次 panel 35.4% 共识
+其实是空 features 导致的全 fail_msg）。
+</HARD-GATE>
+
 ## 📊 进度条规范
 
 每完成一个 Task，输出一行进度条（20 字符固定宽度）：
@@ -535,6 +635,32 @@ python run.py <股票代码> --no-browser      # 强制不打开浏览器
 > "你现在在电脑前吗？如果不在，我可以生成一个公网链接方便手机查看。"
 
 如果用户说不在电脑前 → 加 `--remote` 参数。
+
+### Codex / 国产模型 自适配（v2.6 论坛 bug 修复）
+
+非 Claude 平台跑 UZI-Skill 时常见问题已被代码层修复，但 agent 也要主动适配：
+
+| 论坛报告问题 | v2.6 代码层做了什么 | agent 还要做什么 |
+|---|---|---|
+| `KeyError: 'skip'` | preview_with_mock.py 加 'skip' key + .get() 兜底 | 无 |
+| 失败卡死整条 pipeline | as_completed/result 加 90s timeout，单 fetcher 超时不影响其他 | 不要绕过 timeout 重试 |
+| 中断不能续跑 | stage1 默认 `--resume`，每 3 个 fetcher 增量保存 raw_data.json | 不要手动 `--no-resume` 除非真要重抓 |
+| Python 3.9 语法报错 | 所有新文件加 `from __future__ import annotations` | 无 |
+| mini_racer V8 thread crash | 给 fetch_industry/capital_flow/valuation 加共享锁 | 无 |
+| share/war report 渲染失败 | render_*.py 加 main() alias | 无 |
+| 非 Claude agent_analysis 错乱 | stage2 调用 `lib.agent_analysis_validator.validate()` 写 `_agent_analysis_errors.json` | 跑完看 console 是否有 🔴 schema error，按提示修 |
+| Top bull/bear 排序错乱 | 排除 score=0 异常，按 score 排（不再先按 signal 分组） | 检查 panel.json 数据合理性 |
+| 编造事实 (药明康德↔Apple) | HARD-GATE-FACTCHECK 强制 cite raw_data | **agent 写每条结论都要能在 raw_data 找出处** |
+
+**Codex 启动时检测**：
+```bash
+echo "${CODEX:-${OPENAI_API_KEY:+codex_via_openai}}"
+```
+
+**Codex 推荐设置**：
+- `MX_APIKEY=...` 必设（push2 在境外更不稳）
+- `--remote` 默认开（生成公网链接，无需 GUI）
+- `--no-resume` 别加（断网了能续）
 
 ---
 

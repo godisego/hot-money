@@ -37,9 +37,55 @@ else
     echo "✓ 已在仓库目录中"
 fi
 
-# 安装依赖
+# 安装依赖 — 先试默认 pypi，挂了就自动切国内镜像（大陆网络环境友好）
 echo "📦 安装 Python 依赖..."
-$PYTHON -m pip install -r requirements.txt -q
+
+PIP_MIRRORS=(
+    ""  # 默认 pypi.org（空字符串代表不指定 -i，走默认）
+    "https://pypi.tuna.tsinghua.edu.cn/simple"
+    "https://mirrors.aliyun.com/pypi/simple/"
+    "https://pypi.mirrors.ustc.edu.cn/simple/"
+)
+
+install_deps() {
+    local mirror="$1"
+    if [ -z "$mirror" ]; then
+        $PYTHON -m pip install -r requirements.txt -q 2>/dev/null
+    else
+        local host
+        host=$(echo "$mirror" | awk -F/ '{print $3}')
+        $PYTHON -m pip install -r requirements.txt -q \
+            --index-url "$mirror" \
+            --trusted-host "$host" 2>/dev/null
+    fi
+}
+
+SUCCESS=0
+for mirror in "${PIP_MIRRORS[@]}"; do
+    if [ -z "$mirror" ]; then
+        echo "   [1] 尝试默认 pypi.org ..."
+    else
+        echo "   [+] 尝试镜像 $mirror ..."
+    fi
+    if install_deps "$mirror"; then
+        SUCCESS=1
+        [ -z "$mirror" ] && echo "   ✓ 安装成功（默认 pypi）" || echo "   ✓ 安装成功（via $mirror）"
+        break
+    fi
+done
+
+if [ "$SUCCESS" -eq 0 ]; then
+    echo "   ❌ 所有源都失败。手动试："
+    echo "      pip install -r requirements.txt \\"
+    echo "          -i https://pypi.tuna.tsinghua.edu.cn/simple"
+    exit 1
+fi
+
+# v2.6 · 确保 hooks 脚本有可执行权限（论坛报告 macOS Claude plugin 不能执行）
+if [ -d "hooks" ]; then
+    chmod +x hooks/session-start hooks/run-hook.cmd 2>/dev/null
+    echo "✓ hooks 脚本可执行权限已设置"
+fi
 
 # 验证
 echo ""

@@ -29,8 +29,10 @@ desktop.ini
 # Debug / temp scripts (per-ticket, not for distribution)
 skills/deep-analysis/scripts/_*.py
 
-# Env
+# Env (v2.3: 存放 MX_APIKEY 等敏感凭据，绝不 commit)
 .env
 .env.local
+.env.*.local
+*.local.env
 *.key
 docs/screenshots/full-page.png

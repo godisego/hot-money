@@ -76,6 +76,30 @@ A 股 / 港股 / 美股 · 个股深度分析引擎
 
 装好后说 `/analyze-stock 贵州茅台`。
 
+> ⚠️ **Claude Code 会自动给 plugin 命令加命名空间前缀**
+>
+> Claude Code 装 plugin 后，所有 skill/command 会以 `stock-deep-analyzer:` 开头
+> （plugin.name 就是这个 slug）。所以在 **skill 面板 / 自动补全列表** 里你看到
+> 的是下面这种全名：
+>
+> - `stock-deep-analyzer:analyze-stock`
+> - `stock-deep-analyzer:quick-scan`
+> - `stock-deep-analyzer:scan-trap`
+> - `stock-deep-analyzer:dcf`
+> - `stock-deep-analyzer:ic-memo`
+> - `stock-deep-analyzer:investor-panel`
+> - `stock-deep-analyzer:trap-detector`
+> - `stock-deep-analyzer:deep-analysis`
+> - 等全部 14 条
+>
+> **直接用短名也行**（`/analyze-stock 贵州茅台` / `/dcf 600519`）—— Claude Code
+> 只要命令名不冲突就会自动解析到 plugin 下。只有当你同时装了另一个也叫
+> `/analyze-stock` 的 plugin、或者自动补全找不到时，才需要手打全名
+> `/stock-deep-analyzer:analyze-stock`。
+>
+> Cursor / Gemini CLI / Codex 同理：plugin 安装后也会加前缀，大多数情况下短名
+> 可用。
+
 ### Codex
 
 直接对 Codex 说：

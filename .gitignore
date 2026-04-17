@@ -36,3 +36,7 @@ skills/deep-analysis/scripts/_*.py
 *.local.env
 *.key
 docs/screenshots/full-page.png
+
+# Local-only drafts (not for remote)
+docs/wechat-article.md
+docs/*.local.md

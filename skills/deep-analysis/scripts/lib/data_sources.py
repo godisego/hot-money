@@ -450,20 +450,75 @@ def _known_stock_industry(code: str) -> str | None:
 
 
 def _fetch_basic_hk(ti: TickerInfo) -> dict:
+    """v2.5 · HK basic info via multi-source fallback chain.
+
+    Old version only called ak.stock_hk_spot_em() which goes through push2
+    (blocked in 2026). Now we layer:
+      1. hk_data_sources.fetch_hk_basic_combined  (XQ + EM company profile + EM valuation)
+      2. ak.stock_hk_spot_em (legacy push2 path; kept for price/change_pct if reachable)
+      3. MX妙想 API (if MX_APIKEY set; covers HK too)
+    """
     if ak is None:
         raise RuntimeError("akshare not installed")
-    df = _retry(lambda: ak.stock_hk_spot_em())
-    row = df[df["代码"] == ti.code.zfill(5)]
-    if row.empty:
-        return {"code": ti.full, "name": None}
-    r = row.iloc[0]
-    return {
-        "code": ti.full,
-        "name": r.get("名称"),
-        "price": float(r.get("最新价", 0)),
-        "change_pct": float(r.get("涨跌幅", 0)),
-        "market_cap": r.get("总市值"),
-    }
+
+    code5 = ti.code.zfill(5)
+    out: dict[str, Any] = {"code": ti.full}
+
+    # PRIMARY: multi-source enrichment (industry/PE/PB/mcap/ranks/profile)
+    try:
+        from .hk_data_sources import fetch_hk_basic_combined
+        enriched = fetch_hk_basic_combined(code5)
+        # Merge non-private fields
+        for k, v in enriched.items():
+            if k.startswith("_") or k in ("code5",):
+                continue
+            if v is not None and v != "":
+                out[k] = v
+        if "_ranks" in enriched:
+            out["_ranks"] = enriched["_ranks"]
+        out["_fallback_snap"] = "hk_combined(xq+em_profile+em_valuation)"
+    except Exception as e:
+        out["_hk_combined_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    # SECONDARY: legacy push2 spot for fresh price/change_pct (often blocked, but try)
+    try:
+        df = _retry(lambda: ak.stock_hk_spot_em(), attempts=2, sleep=1.0)
+        row = df[df["代码"] == code5]
+        if not row.empty:
+            r = row.iloc[0]
+            try: out["price"] = float(r.get("最新价", 0)) or out.get("price")
+            except (ValueError, TypeError): pass
+            try: out["change_pct"] = float(r.get("涨跌幅", 0))
+            except (ValueError, TypeError): pass
+            if not out.get("market_cap"):
+                out["market_cap"] = r.get("总市值")
+            if not out.get("name"):
+                out["name"] = r.get("名称")
+    except Exception as e:
+        out["_em_spot_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    # TERTIARY: MX 妙想 API (if available — also covers HK)
+    if _mx_available() and not out.get("price"):
+        try:
+            from .mx_api import MXClient
+            client = MXClient()
+            snap = client.fetch_snapshot(code5)
+            if snap:
+                price = None
+                for k in ("最新价", "收盘价", "现价"):
+                    v = snap.get(k)
+                    if v not in (None, "", "-"):
+                        try:
+                            price = float(v); break
+                        except (ValueError, TypeError):
+                            continue
+                if price:
+                    out["price"] = price
+                out["_fallback_snap"] = (out.get("_fallback_snap", "") + "+mx").lstrip("+")
+        except Exception as e:
+            out["_mx_err"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    return out
 
 
 def _fetch_basic_us(ti: TickerInfo) -> dict:

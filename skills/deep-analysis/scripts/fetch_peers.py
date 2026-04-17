@@ -27,6 +27,48 @@ def main(ticker: str) -> dict:
     peer_table: list = []
     peer_comparison: list = []
 
+    # v2.5 · HK 分支：用 akshare HK valuation/scale comparison 给出 rank-in-HK-universe，
+    # 没有具体同行名单（akshare 港股没有按行业列表函数；agent 可走 AASTOCKS Playwright 兜底）
+    if ti.market == "H":
+        ranks = (basic.get("_ranks") or {})
+        val = ranks.get("valuation") or {}
+        scale = ranks.get("scale") or {}
+        growth = ranks.get("growth") or {}
+        # 用 PE/PB/Mcap 排名构造一行 self
+        self_row = {
+            "name": basic.get("name") or ti.full,
+            "code": ti.full,
+            "pe": f"{val.get('pe_ttm', 0):.1f}" if val.get("pe_ttm") else "—",
+            "pb": f"{val.get('pb_mrq', 0):.2f}" if val.get("pb_mrq") else "—",
+            "roe": "—",
+            "revenue_growth": f"{growth.get('revenue_yoy', 0):.1f}%" if growth.get("revenue_yoy") else "—",
+            "is_self": True,
+        }
+        peer_table = [self_row]
+        peer_comparison = [
+            {"name": "PE-TTM 排名 (HK 全市场)", "self": val.get("pe_ttm_rank"), "peer": "—"},
+            {"name": "PB-MRQ 排名 (HK 全市场)", "self": val.get("pb_mrq_rank"), "peer": "—"},
+            {"name": "总市值排名 (HK 全市场)", "self": scale.get("market_cap_rank"), "peer": "—"},
+            {"name": "营收 YoY 排名", "self": growth.get("revenue_yoy_rank"), "peer": "—"},
+        ]
+        # rank string for the report
+        mcap_rank = scale.get("market_cap_rank")
+        rank_str = f"HK 第 {mcap_rank} 位（按总市值）" if mcap_rank else "—"
+        return {
+            "ticker": ti.full,
+            "data": {
+                "industry": industry or "未分类（akshare HK 无行业聚合）",
+                "self": basic,
+                "peer_table": peer_table,
+                "peer_comparison": peer_comparison,
+                "rank": rank_str,
+                "peers_top20_raw": [],
+                "_note": "HK peer LIST 需走 AASTOCKS Playwright 或问财；本字段提供 rank-in-universe 作替代",
+            },
+            "source": "akshare:hk_valuation_comparison_em + scale_comparison_em + growth_comparison_em",
+            "fallback": False,
+        }
+
     if ti.market == "A" and industry:
         try:
             df = ak.stock_board_industry_cons_em(symbol=industry)

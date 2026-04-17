@@ -2471,6 +2471,29 @@ def assemble(ticker: str) -> Path:
     if not (syn and raw and panel):
         raise RuntimeError(f"Missing prerequisite cache for {ticker}. Run Tasks 1-4 first.")
 
+    # v2.9 · 机械级自查 gate（代替以往"软 HARD-GATE"）
+    # HTML 生成前强制跑 self_review；critical != 0 → 拒绝出报告，让 agent 修
+    # 环境变量 UZI_SKIP_REVIEW=1 可临时跳过（仅限开发调试，不该生产用）
+    import os
+    if os.environ.get("UZI_SKIP_REVIEW") != "1":
+        from lib.self_review import review_all, write_review, format_human
+        review = review_all(ticker)
+        write_review(ticker, review)
+        crit = review["critical_count"]
+        if crit > 0:
+            print(format_human(review))
+            raise RuntimeError(
+                f"⛔ BLOCKED by self-review: {ticker} 有 {crit} 个 critical 问题待修。\n"
+                f"→ 读 .cache/{ticker}/_review_issues.json\n"
+                f"→ 对每条 critical issue 执行 suggested_fix（agent 补数据 / 重跑 stage2 / 写 agent_analysis）\n"
+                f"→ 全部修完后重跑 assemble_report。\n"
+                f"→ 如需强制跳过（仅调试）：export UZI_SKIP_REVIEW=1"
+            )
+        elif review["warning_count"] > 0:
+            # warning 允许出 HTML，但在报告 banner 里留痕
+            print(format_human(review))
+            print(f"⚠  {ticker}: {review['warning_count']} warning 已记录，继续生成 HTML")
+
     basic = (raw.get("dimensions", {}).get("0_basic") or {}).get("data") or {}
     debate = syn.get("debate") or {}
     divide = syn.get("great_divide") or {}

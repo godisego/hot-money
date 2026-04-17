@@ -107,33 +107,108 @@ def _cninfo_industry_metrics(industry_name: str) -> dict:
     return {}
 
 
+def _dynamic_industry_overview(industry: str) -> dict:
+    """v2.9 · 替代 INDUSTRY_ESTIMATES 硬编码 · 用 search_trusted 动态查景气度。
+
+    对不在 INDUSTRY_ESTIMATES 的行业（236/243 个申万三级），走权威域 site:
+    查询，从统计局/工信部/中证网/每经的真实文章里抽：
+      - growth 同比增速关键词
+      - TAM 市场规模
+      - lifecycle 阶段性关键词
+    把抽到的 snippets 返回给 agent，由 agent 在 dim_commentary 里综合。
+    """
+    try:
+        from lib.web_search import search_trusted
+    except Exception:
+        return {}
+
+    from datetime import datetime
+    yr = datetime.now().year
+    queries = {
+        "景气度": f"{yr} {industry} 行业景气度 增速 市场规模",
+        "TAM":    f"{industry} 行业规模 亿元 TAM 2026",
+        "周期":   f"{industry} 生命周期 成长期 成熟期 下行",
+    }
+    snippets: dict[str, list] = {}
+    for tag, q in queries.items():
+        res = search_trusted(q, dim_key="7_industry", max_results=4)
+        valid = [r for r in res if "error" not in r]
+        snippets[tag] = [
+            {"title": r.get("title", "")[:80], "body": r.get("body", "")[:200], "url": r.get("url", "")}
+            for r in valid[:3]
+        ]
+
+    # 启发式提取（agent 可覆盖）
+    all_bodies = " ".join(s.get("body", "") for items in snippets.values() for s in items)
+    # 简单 growth 关键词
+    import re
+    growth_match = re.search(r"([+\-]?\d{1,3}(?:\.\d+)?)\s*%", all_bodies)
+    growth_heuristic = f"{growth_match.group(1)}%/年" if growth_match else "—"
+    tam_match = re.search(r"(\d{1,5}(?:\.\d+)?)\s*[亿万]", all_bodies)
+    tam_heuristic = f"¥{tam_match.group(1)}亿" if tam_match else "—"
+
+    # 生命周期关键词扫描
+    lifecycle = "—"
+    for keyword, label in [("成长期", "成长期"), ("成熟期", "成熟期"),
+                           ("下行期", "下行期"), ("衰退", "衰退期"),
+                           ("拐点", "拐点"), ("景气", "景气上行")]:
+        if keyword in all_bodies:
+            lifecycle = label
+            break
+
+    return {
+        "growth_heuristic": growth_heuristic,
+        "tam_heuristic": tam_heuristic,
+        "lifecycle_heuristic": lifecycle,
+        "web_snippets": snippets,
+        "snippet_count": sum(len(v) for v in snippets.values()),
+    }
+
+
 def main(industry: str) -> dict:
-    # Lookup industry estimates
+    # v2.9 · 优先级
+    #   1. INDUSTRY_ESTIMATES 硬编码（手工策展的 7 个高频行业保留做 anchor）
+    #   2. search_trusted 动态查权威域（236 个未覆盖行业的兜底）
+    #   3. cninfo 行业 PE 加权 metrics（独立源，始终尝试）
     est = _best_industry_match(industry)
+    dynamic = {} if est else _dynamic_industry_overview(industry)
 
     # Get cninfo aggregated metrics
     cninfo_metrics = _cninfo_industry_metrics(industry)
 
+    # 合并：硬编码优先，没有则走动态启发 + 真实 snippets
+    growth      = est.get("growth")     or dynamic.get("growth_heuristic")   or "—"
+    tam         = est.get("tam")        or dynamic.get("tam_heuristic")      or "—"
+    penetration = est.get("penetration")                                      or "—"
+    lifecycle   = est.get("lifecycle")  or dynamic.get("lifecycle_heuristic") or "—"
+    note        = est.get("note", "")
+
+    source_parts = ["cninfo:stock_industry_pe_ratio"]
+    if est: source_parts.append("INDUSTRY_ESTIMATES")
+    if dynamic: source_parts.append(f"search_trusted:7_industry({dynamic.get('snippet_count',0)} snippets)")
+
     return {
         "data": {
             "industry": industry,
-            "growth": est.get("growth", "—"),
-            "tam": est.get("tam", "—"),
-            "penetration": est.get("penetration", "—"),
-            "lifecycle": est.get("lifecycle", "—"),
-            "note": est.get("note", ""),
+            "growth": growth,
+            "tam": tam,
+            "penetration": penetration,
+            "lifecycle": lifecycle,
+            "note": note,
             "cninfo_metrics": cninfo_metrics,
             "total_companies": cninfo_metrics.get("company_count"),
             "industry_pe_weighted": cninfo_metrics.get("industry_pe_weighted"),
-            "needs_web_search": not bool(est),
+            # v2.9 · agent 可基于这些真实 snippets 写更好的 dim_commentary
+            "dynamic_snippets": dynamic.get("web_snippets") or {},
+            "needs_web_search": not bool(est) and not dynamic,
             "web_search_queries": [
                 f"{industry} 行业景气度 2026",
                 f"{industry} 市场规模 TAM",
                 f"{industry} 渗透率 提升空间",
-            ] if not est else [],
+            ] if (not est and not dynamic) else [],
         },
-        "source": "cninfo:stock_industry_pe_ratio + INDUSTRY_ESTIMATES + web_search",
-        "fallback": not bool(cninfo_metrics),
+        "source": " + ".join(source_parts),
+        "fallback": not bool(cninfo_metrics) and not dynamic,
     }
 
 

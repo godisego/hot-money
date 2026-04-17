@@ -1,5 +1,123 @@
 # Release Notes
 
+## v2.9.0 — 2026-04-17 (机械级 agent 自查 · 结构性改造)
+
+> **v2.9 关键变化：agent 自查从"软要求"升级到"机械强制"——HTML 生成前必过 13 项自动检查，critical 不过就 raise RuntimeError 拒绝出报告**
+
+### 用户指令
+> "一切内容后，必须要有agent自己核对一遍所有内容，如果有问题就要修改，现在这个事儿还是没做，这个逻辑一定要对！"
+
+### 根本问题
+
+过往版本 SKILL.md 有 HARD-GATE-FINAL-CHECK 这种"软要求"，agent 可能跳过、可能忘、可能做半截。BUG#R10（云铝→农副食品加工）暴露出：agent 跑完全流程报告都发出去了，才被用户发现行业分类错了。
+
+**软 HARD-GATE 不够。必须机械级强制。**
+
+### v2.9 核心 · 自查引擎
+
+**新增 `lib/self_review.py`** (~300 行) · 13 条自动检查覆盖过往所有 BUG 经验：
+
+| severity | check | 背后 BUG |
+|---|---|---|
+| 🔴 | `check_industry_mapping_sanity` | BUG#R10 工业金属→农副食品加工 |
+| 🔴 | `check_all_dims_exist` | wave2 timeout 导致 12_capital_flow 缺失 |
+| 🔴 | `check_empty_dims` | crash/timeout 产生的空维度 |
+| 🔴 | `check_hk_kline_populated` | BUG#R8 HK kline 无 fallback |
+| 🔴 | `check_hk_financials_populated` | BUG#R7 HK financials 空 stub |
+| 🔴 | `check_panel_non_empty` | panel 全 skip/avg_score 异常 |
+| 🔴 | `check_coverage_threshold` | `_integrity.coverage_pct < 60` |
+| 🔴 | `check_placeholder_strings` | synthesis 含 "[脚本占位]" |
+| 🔴 | `check_agent_analysis_exists` | agent_analysis.json 缺失 |
+| 🟡 | `check_valuation_sanity` | DCF/Comps 全 0 |
+| 🟡 | `check_metals_materials_populated` | 金属股 materials 空 |
+| 🟡 | `check_industry_data_coverage` | 7_industry 需 agent 补 |
+| 🟡 | `check_factcheck_redflags` | 编造"苹果产业链"无 raw_data 证据 |
+
+**新 CLI `scripts/review_stage_output.py`**：
+
+```bash
+python review_stage_output.py <ticker>
+# exit 0 = 无 critical，可进 HTML
+# exit 1 = 有 critical，BLOCK
+# exit 2 = 只有 warning，可进但建议 ack
+```
+
+输出 `.cache/<ticker>/_review_issues.json`，每条 issue 含：
+- `severity`, `category`, `dim`
+- `issue` 人读描述
+- `evidence` 触发的具体值
+- `suggested_fix` 下一步怎么处理
+
+**关键的机械强制 · `assemble_report::assemble()`**：
+
+```python
+# v2.9 起 HTML 生成前自动跑 review
+from lib.self_review import review_all
+review = review_all(ticker)
+if review["critical_count"] > 0:
+    raise RuntimeError(
+        f"⛔ BLOCKED by self-review: {crit} 个 critical 问题待修"
+    )
+# 过了才能继续拼 HTML
+```
+
+### Agent 迭代流程（SKILL.md HARD-GATE-AGENT-SELF-REVIEW）
+
+```
+loop:
+  1. python review_stage_output.py <ticker>
+  2. 读 _review_issues.json
+  3. if critical > 0:
+       for each critical issue:
+         - 执行 suggested_fix（补数据/重跑/写 agent_analysis 覆盖）
+       重跑 review
+  4. if warning > 0:
+       for each warning: 要么修，要么 agent_analysis.review_acknowledged 写原因
+  5. critical == 0 时进入 HTML
+```
+
+### v2.9 结构性改造 · fetch_industry 动态查
+
+**问题**：v2.8.x 的 `INDUSTRY_ESTIMATES` 硬编码表只有 7 条，236/243 个申万三级行业的 TAM/growth/lifecycle 永远是 "—"。
+
+**修法**：保留 7 条硬编码作 anchor，**不在表里的行业走 `search_trusted(dim='7_industry')`** 动态查权威域（统计局/工信部/中证网/每经）并启发式抽取：
+
+```
+v2.8.4: 工业金属 → growth: "—"  tam: "—"  lifecycle: "—"  (硬编码表里无)
+v2.9.0: 工业金属 → growth: "3.5%/年"  (从"六部门印发机械行业稳增长工作方案"抽)
+                  + 9 条真实权威 snippets 给 agent 综合
+                  + source: cninfo + search_trusted:7_industry(9 snippets)
+```
+
+不需要手工维护 243 条硬编码表——数据始终实时，来源可 URL 溯源。
+
+### 港股 industry_pe fallback
+
+**问题**：cninfo 只支持 A 股，港股 `industry_pe_avg` 永远是 None（实测 00700.HK valuation 完整性 22%）。
+
+**修法**：港股走 `ak.hk_valuation_comparison_em` 取同行 PE 均值作 industry_pe。
+
+### 回归
+
+**41/41** regression tests pass（新增 5 条）：
+- `test_self_review_engine_exists`
+- `test_self_review_cli_exists`
+- `test_assemble_report_gated_by_review`（确保 HTML gate 机械化）
+- `test_self_review_catches_bug_r10`（mock BUG#R10 场景验证 engine 能抓到）
+- `test_fetch_industry_has_dynamic_fallback`
+
+### 改动文件
+
+- **NEW** `scripts/lib/self_review.py` ~300 行 · 13 条自查规则
+- **NEW** `scripts/review_stage_output.py` · CLI runner
+- `scripts/assemble_report.py::assemble()` · 入口加强制 review gate
+- `scripts/fetch_industry.py` · 动态 `_dynamic_industry_overview` + `dynamic_snippets` 输出
+- `scripts/fetch_valuation.py` · HK industry_pe 通过 `hk_valuation_comparison_em` 兜底
+- `skills/deep-analysis/SKILL.md` · `HARD-GATE-FINAL-CHECK` 重写为 `HARD-GATE-AGENT-SELF-REVIEW`（明确"机械级强制"）
+- 版本号 2.8.4 → 2.9.0
+
+---
+
 ## v2.8.4 — 2026-04-17 (follow-up · 全库自审有色金属类 coverage gap)
 
 > **用户提醒"这些数据你都要自我检查一遍的，懂了吗？" 主动全库审计，补齐 v2.8.3 关联的 3 个 coverage gap**

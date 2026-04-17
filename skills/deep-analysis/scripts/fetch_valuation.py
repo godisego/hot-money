@@ -130,6 +130,19 @@ def main(ticker: str) -> dict:
         except Exception:
             pass
 
+    # v2.9 · 港股 industry_pe fallback（cninfo 只支持 A 股）
+    # HK 走 akshare hk_valuation_comparison_em（peer 平均 PE）或启发式同行 PE
+    if ti.market == "H" and industry_pe_avg is None:
+        try:
+            df_hk = ak.hk_valuation_comparison_em(symbol=ti.code.zfill(5))
+            if df_hk is not None and not df_hk.empty and "PE(TTM)" in df_hk.columns:
+                pes = [float(v) for v in df_hk["PE(TTM)"] if v and not (isinstance(v, str) and v in ("-", "—"))]
+                pes = [p for p in pes if p > 0 and p < 500]
+                if pes:
+                    industry_pe_avg = round(sum(pes) / len(pes), 2)
+        except Exception:
+            pass
+
     # 3. DCF 敏感度矩阵 - use fetch_financials output from our upgraded fetcher
     dcf_result: dict = {}
     dcf_sensitivity: dict = {}

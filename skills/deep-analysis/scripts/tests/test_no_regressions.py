@@ -468,6 +468,58 @@ def test_metals_industries_have_peers_alias():
             f"BUG#R10-coverage: _INDUSTRY_ALIASES 缺 {ind!r} → '有色金属' 映射"
 
 
+# ─── v2.9 · 机械级 self-review gate ──
+def test_self_review_engine_exists():
+    from lib import self_review
+    assert hasattr(self_review, "review_all"), "v2.9 regression: lib.self_review.review_all missing"
+    assert hasattr(self_review, "write_review")
+    assert hasattr(self_review, "CHECKS")
+    assert len(self_review.CHECKS) >= 10, f"v2.9 regression: self-review 检查不足 10 条（当前 {len(self_review.CHECKS)}）"
+
+
+def test_self_review_cli_exists():
+    cli = SCRIPTS_DIR / "review_stage_output.py"
+    assert cli.exists(), "v2.9 regression: review_stage_output.py CLI missing"
+
+
+def test_assemble_report_gated_by_review():
+    """assemble_report 入口必须调 self_review 并在 critical>0 时 raise"""
+    src = (SCRIPTS_DIR / "assemble_report.py").read_text(encoding="utf-8")
+    # 必须有 review_all / write_review 调用
+    assert "from lib.self_review" in src, "v2.9 regression: assemble_report 未 import self_review"
+    assert "review_all(ticker)" in src, "v2.9 regression: assemble_report 未调 review_all"
+    assert "critical_count" in src and "RuntimeError" in src, \
+        "v2.9 regression: assemble_report 必须在 critical>0 时 raise RuntimeError 拒绝出 HTML"
+
+
+def test_self_review_catches_bug_r10():
+    """自查引擎必须能捕捉 BUG#R10 级别的行业碰撞（云铝→农副食品加工）"""
+    from lib.self_review import check_industry_mapping_sanity
+    # 构造假 ctx 模拟 BUG#R10 场景
+    ctx = {
+        "market": "A",
+        "dims": {
+            "0_basic": {"data": {"industry": "工业金属", "name": "云铝股份"}},
+            "7_industry": {"data": {"cninfo_metrics": {"industry_name_match": "农副食品加工业"}}},
+        },
+    }
+    issues = check_industry_mapping_sanity(ctx)
+    assert len(issues) >= 1, "BUG#R10 regression: self_review 没抓到工业金属→农副食品加工的误映射"
+    assert issues[0].severity == "critical"
+
+
+# ─── v2.9 · fetch_industry 结构性改造：动态 search_trusted ──
+def test_fetch_industry_has_dynamic_fallback():
+    """fetch_industry 不在硬编码表的行业必须走 search_trusted 动态查"""
+    src = (SCRIPTS_DIR / "fetch_industry.py").read_text(encoding="utf-8")
+    assert "_dynamic_industry_overview" in src, \
+        "v2.9 regression: fetch_industry 缺 _dynamic_industry_overview 动态查询函数"
+    assert "search_trusted" in src, \
+        "v2.9 regression: fetch_industry 未接入 search_trusted"
+    assert "dynamic_snippets" in src, \
+        "v2.9 regression: fetch_industry 输出必须带 dynamic_snippets 给 agent 综合"
+
+
 if __name__ == "__main__":
     # Manual runner — no pytest required
     import inspect

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 游资（UZI）Skills
+# 游资 (UZI) Skills
 
 *"51 legendary investors review your stock picks — Buffett and a Chinese day-trader finally sit at the same table."*
 
@@ -11,125 +11,210 @@
 [![Investors](https://img.shields.io/badge/Investors-51-orange)]()
 [![Methods](https://img.shields.io/badge/Institutional%20Methods-17-red)]()
 
-China A-Share / HK / US Stock Deep Analysis Engine
+**A-share / HK / US deep-analysis engine — with first-class Chinese-market coverage Western terminals don't touch.**
 
-[Install](#install) · [Usage](#usage) · [Jury Panel](#-51-investor-jury) · [Methods](#-17-institutional-methods) · [Screenshots](#-what-the-report-looks-like) · [FAQ](#-faq)
+[Install](#install) · [Usage](#usage) · [Why Western Investors Should Care](#-why-western-investors-should-care) · [Jury Panel](#-51-investor-jury) · [Methods](#-17-institutional-methods) · [Screenshots](#-what-the-report-looks-like) · [FAQ](#-faq)
 
 **English** | [中文](README.md)
 
 </div>
 
 ---
-## Thanks
-Linux.do is all your need to learn AI~
-thansk [Linux.do](https://linux.do/) for support
-## What Is This
 
-One sentence: enter a stock ticker, Claude becomes your personal analyst — pulls 22 dimensions of data, runs 17 Wall Street analysis models, has 51 investors with completely different styles each score the stock, then produces a 600KB Bloomberg-style report.
+## 🌏 Why Western Investors Should Care
+
+If you've ever tried to research a Chinese A-share from outside China, you know the pain:
+- Bloomberg covers HK and ADRs, but A-share data is thin and the context is missing.
+- Reuters / FT give you macro headlines, not per-company fundamentals.
+- Anthropic's [financial-services-plugins](https://github.com/anthropics/financial-services-plugins) ships great institutional models (DCF / LBO / Comps) — **US-only**, and gated behind paid FactSet / S&P feeds.
+- You end up copy-pasting from Eastmoney through Google Translate, and by the time you've built a DCF in Excel, the name's already moved 8%.
+
+**This plugin fixes the Chinese half of that problem.** It reads A-share / H-share / US markets with the same interface, speaks to 20+ free Chinese data sources (akshare / Eastmoney / XueQiu / CNInfo / HKEXNews / mx妙想 API), and hands Claude enough context to actually reason about a Chinese company — not just translate its ticker.
+
+It's also why this exists: **if legends get Chinese stocks wrong, ordinary investors need every analytical advantage they can get.** Charlie Munger famously loaded up on Alibaba (BABA) through Daily Journal Corp in 2021, then had to cut the position in half in 2022 after a ~70% drawdown. At the 2022 DJCO meeting, [Munger called it "one of the worst mistakes I ever made"](https://www.cnbc.com/2023/02/15/charlie-munger-says-he-regrets-alibaba-investment-one-of-the-worst-mistakes.html) — an estimated nine-figure hit. Even one of the greatest investors of all time underestimated how differently the Chinese regulatory and competitive landscape behaves.
+
+So yes — this plugin helps you understand Chinese names like **Alibaba** (`BABA` / `09988.HK`), **Tencent** (`00700.HK`), **Kweichow Moutai** (`600519.SH`), **CATL** (`300750.SZ`), **BYD** (`002594.SZ`), **Pop Mart** (`09992.HK`), **Pinduoduo** (`PDD`) — the same names that keep showing up in Western portfolios and keep surprising their owners 😉
+
+---
+
+## What It Does
+
+One sentence: give it a ticker, Claude becomes your analyst — pulls **22 dimensions of data**, runs **17 Wall-Street analysis models**, has **51 investors with distinct methodologies** score the stock, and produces a 600 KB Bloomberg-style HTML report.
 
 ```
-/analyze-stock AAPL
+/analyze-stock 600519         # Kweichow Moutai (A-share)
+/analyze-stock 00700.HK       # Tencent (HK)
+/analyze-stock BABA           # Alibaba ADR
+/analyze-stock AAPL           # Apple
 ```
 
 After 5-8 minutes you get:
-- **An HTML report** — self-contained, opens in any browser, works offline
-- **A portrait card** — 1080x1920, shareable on social media
-- **A landscape card** — 1920x1080
-- **A one-liner summary**
+- **A self-contained HTML report** — opens in any browser, works offline
+- **A portrait share card** (1080×1920) for social media
+- **A landscape war-report card** (1920×1080)
+- **A one-line summary** for chat / Slack / Telegram
 
-## Why Build This
+---
 
-Looking at a single stock used to be: check fundamentals on one app, technicals on another, see what influencers say on a third, dig through broker research, manually build a DCF in Excel... 2-3 hours gone, and you still lose money.
+## 💬 Test Group & Feedback
 
-All of this is really just "gather info, analyze from multiple angles, give a verdict." Why not let AI do it all?
+This is early-stage; forum reports plenty of bugs. If you want to help test or just trade notes, WeChat group QR below (primarily Chinese-speaking — if you prefer English, file issues on GitHub and we'll reply). For the latest features, track the `develop` branch.
 
-Existing tools are either GPT wrappers that output three paragraphs of nothing, or Bloomberg terminals you can't afford. Anthropic's [financial-services-plugins](https://github.com/anthropics/financial-services-plugins) has great methodology (DCF/Comps/LBO), but it's US-only and needs paid data sources (FactSet, S&P Global).
-
-So we built one. **Free data sources only, zero API keys, works with China A-shares out of the box.**
+<p align="center">
+  <img src="docs/screenshots/b9857c297761d9420c45285b4fce2255.jpg" width="300" alt="WeChat group QR code" />
+</p>
 
 ---
 
 ## Install
 
-### Claude Code (Plugin)
+No matter which agent you use, **one line does it**:
 
-```bash
+### Claude Code
+
+```
 /plugin marketplace add wbh604/UZI-Skill
 /plugin install stock-deep-analyzer@uzi-skill
 ```
 
-### Claude Code (Skill)
+Then say `/analyze-stock Tencent` or `/analyze-stock 00700.HK`.
 
-```bash
-git clone https://github.com/wbh604/UZI-Skill.git && pip install -r UZI-Skill/requirements.txt
-```
+> ⚠️ **Claude Code auto-prefixes plugin commands with a namespace**
+>
+> After install, all skills/commands appear in the skill picker as `stock-deep-analyzer:<name>`:
+> - `stock-deep-analyzer:analyze-stock`
+> - `stock-deep-analyzer:quick-scan`
+> - `stock-deep-analyzer:scan-trap`
+> - `stock-deep-analyzer:dcf` / `:ic-memo` / `:investor-panel` / `:trap-detector` / ...
+>
+> **Short names usually work too** (`/analyze-stock 00700.HK`). If there's a name collision with another plugin, or autocomplete can't resolve it, use the full `stock-deep-analyzer:analyze-stock`. Cursor / Gemini CLI / Codex behave the same way.
 
 ### Codex
 
+Just tell Codex:
+
+> Please follow https://raw.githubusercontent.com/wbh604/UZI-Skill/main/.codex/INSTALL.md to install UZI-Skill, then deep-analyze Alibaba (BABA).
+
+### OpenClaw / 龙虾
+
+> Install https://github.com/wbh604/UZI-Skill and analyze Tencent (00700.HK) for me.
+
+### Cursor
+
 ```
-git clone https://github.com/wbh604/UZI-Skill.git && pip install -r UZI-Skill/requirements.txt && python UZI-Skill/skills/deep-analysis/scripts/run_real_test.py AAPL
+/add-plugin stock-deep-analyzer
 ```
 
-### Cursor / Windsurf / Devin
+Then say "analyze BABA".
 
-Just paste this:
+### Gemini CLI
 
-> Clone https://github.com/wbh604/UZI-Skill, install requirements.txt, then follow the 6-Task workflow in `skills/deep-analysis/SKILL.md` to analyze a stock.
+```bash
+gemini extensions install https://github.com/wbh604/UZI-Skill
+```
+
+### OpenCode
+
+> Follow https://raw.githubusercontent.com/wbh604/UZI-Skill/main/.opencode/INSTALL.md and analyze Pop Mart (09992.HK).
+
+### Windsurf / Devin / Any Other Agent
+
+Paste this:
+
+> Clone https://github.com/wbh604/UZI-Skill, read `AGENTS.md`, then deep-analyze Alibaba (09988.HK).
 
 ### CLI Only
 
 ```bash
 git clone https://github.com/wbh604/UZI-Skill.git
 cd UZI-Skill && pip install -r requirements.txt
-python skills/deep-analysis/scripts/run_real_test.py AAPL
+python skills/deep-analysis/scripts/run_real_test.py BABA
 ```
+
+### 📱 Not at your desk?
+
+Tell any agent:
+
+> Analyze 00700.HK in remote mode — generate a public link so I can view it on my phone.
+
+The agent spins up a Cloudflare Tunnel and gives you a `https://xxx.trycloudflare.com` URL.
 
 ---
 
 ## Usage
 
+### Full deep analysis (5-8 minutes)
+
+```
+/analyze-stock 600519          # A-share by ticker
+/analyze-stock 00700.HK        # HK
+/analyze-stock BABA            # US ADR
+/analyze-stock AAPL            # US
+```
+
+> **Ticker format tips for English users:**
+> - A-share: 6-digit + `.SH` (Shanghai) or `.SZ` (Shenzhen) — e.g. `600519.SH`, `002594.SZ`. Bare 6-digit like `600519` also works.
+> - HK: 5-digit + `.HK` — e.g. `00700.HK`, `09988.HK`.
+> - US: plain symbol — `AAPL`, `BABA`, `PDD`, `NVDA`.
+> - Chinese names also resolve: `贵州茅台`, `腾讯控股`. For English input, prefer ticker codes over company names (name-resolution is tuned for Chinese).
+
+### Single-purpose commands
+
 | Command | What It Does |
 |---|---|
-| `/analyze-stock AAPL` | Full 6-Task deep analysis |
-| `/dcf 600519` | DCF valuation with 5x5 sensitivity table |
-| `/comps 002273` | Peer comparison with percentile ranking |
-| `/lbo 600519` | LBO test — PE buyer IRR perspective |
-| `/initiate 002273` | Initiating coverage report (JPM/GS style) |
-| `/ic-memo 002273` | Investment committee memo with 3 scenarios |
-| `/earnings 002273` | Earnings beat/miss analysis |
-| `/catalysts 002273` | Catalyst calendar — next 60 days |
-| `/thesis 002273` | Investment thesis tracker (5 pillars) |
-| `/screen 002273` | 5 quant screens (value/growth/quality) |
-| `/dd 002273` | Due diligence checklist (21 items) |
-| `/scan-trap 002273` | Scam detection (8 signals) |
+| `/dcf 600519` | DCF valuation · WACC + 5×5 sensitivity table |
+| `/comps 002273` | Peer comparison · PE / PB percentile ranking |
+| `/lbo 600519` | LBO stress test · PE-buyer IRR perspective |
+| `/initiate BABA` | Initiating-coverage report · JPM / GS format |
+| `/ic-memo BABA` | Investment-committee memo · 3-scenario returns |
+| `/earnings AAPL` | Earnings beat/miss analysis |
+| `/catalysts 300750` | Catalyst calendar · next 60 days |
+| `/thesis 600519` | Investment-thesis tracker · 5 pillars |
+| `/screen AAPL` | 5 quant screens · value / growth / quality / GARP / short |
+| `/dd BABA` | Due-diligence checklist · 21 items across 5 workstreams |
+| `/quick-scan 00700.HK` | 30-second sanity check |
+| `/panel-only 600519` | Just run the 51-investor jury — no HTML report |
+| `/scan-trap 600519` | Pump-and-dump / trap detection (8 signals) |
 
 ---
 
 ## 🎭 51 Investor Jury
 
-Not template phrases. Each has their own **quantified rule set** (180 rules total). Every recommendation cites the exact rule it hit:
+Not template phrases. Each investor has their own **quantified rule set** (180 rules total) + their own **real quoted voice** + their own **authentic decision profile** (time horizon / position sizing / what-would-change-my-mind).
 
 | Group | Style | Count | Representatives |
 |---|---|---|---|
 | A | Classic Value | 6 | Buffett · Graham · Munger · Fisher · Templeton · Klarman |
 | B | Growth | 4 | Lynch · O'Neil · Thiel · Cathie Wood |
-| C | Macro/Hedge | 5 | Soros · Dalio · Howard Marks · Druckenmiller · Robertson |
+| C | Macro / Hedge | 5 | Soros · Dalio · Howard Marks · Druckenmiller · Julian Robertson |
 | D | Technical | 4 | Livermore · Minervini · Darvas · Gann |
-| E | China Value | 6 | Duan Yongping · Zhang Kun · Zhu Shaoxing · Xie Zhiyu · Feng Liu · Deng Xiaofeng |
-| F | A-Share Day Traders | 23 | Zhang Mengzhu · Zhao Laoge · Foshan Shadowless Kick · Beijing Trader · Xin Duoduo … |
+| E | China Value | 6 | Duan Yongping (段永平) · Zhang Kun · Zhu Shaoxing · Xie Zhiyu · Feng Liu · Deng Xiaofeng |
+| F | A-Share Day Traders (游资) | 23 | Zhang Mengzhu · Zhao Laoge · Foshan Shadowless Kick · Beijing Trader · Xin Duoduo … |
 | G | Quant | 3 | Simons · Thorp · David Shaw |
+
+**Every verdict cites the specific rule it hit.** And each investor answers three questions in their own voice:
+
+| Investor | Time Horizon | What Would Change My Mind |
+|---|---|---|
+| Buffett | 10+ years / forever | ROE below 12% for 2 consecutive years · CEO change + strategic pivot |
+| Zhao Laoge (赵老哥) | T+2 to T+5 | Leader breaks the limit-up · volume doesn't confirm |
+| Simons | Avg holding < 2 days | Signal Sharpe drops below 0.5 · factor decay |
+| Lynch | Until the story plays out, typically 3-5 years | PEG > 2 · inventory growing faster than revenue |
+| Soros | One reflexivity cycle, weeks to months, flip anytime | Market stops validating my narrative |
+
+Their quotes are sourced from **real public materials** — Berkshire annual letters, Oaktree memos, *Principles*, *Margin of Safety*, Lost Tree Club speeches, XueQiu / Zhihu columns — each citation links to the original source.
 
 ---
 
 ## 📐 17 Institutional Methods
 
-Ported from [anthropics/financial-services-plugins](https://github.com/anthropics/financial-services-plugins), adapted with A-share parameters:
+Ported from [anthropics/financial-services-plugins](https://github.com/anthropics/financial-services-plugins), adapted with A-share / H-share parameters.
 
-**Valuation**: DCF · Comps · 3-Statement · LBO · Merger Model
+**Valuation (6)**: DCF · Comps · 3-Statement · LBO · Merger Model · Unit Economics
 
-**Research**: Initiating Coverage · Earnings Analysis · Catalyst Calendar · Thesis Tracker · Morning Note · Idea Screen · Sector Overview
+**Research (7)**: Initiating Coverage · Earnings Analysis · Catalyst Calendar · Thesis Tracker · Morning Note · Quant Screen · Sector Overview
 
-**Decision**: IC Memo · Porter 5 Forces + BCG · DD Checklist · Unit Economics · Value Creation Plan · Portfolio Rebalance
+**Decision (6)**: IC Memo · Porter 5 Forces + BCG · DD Checklist · Value Creation Plan · Portfolio Rebalance · Trap Detection (unique to this plugin)
 
 ---
 
@@ -137,7 +222,7 @@ Ported from [anthropics/financial-services-plugins](https://github.com/anthropic
 
 > All screenshots from a real analysis of Crystal Optech (002273.SZ).
 
-### Score Dashboard
+### Score dashboard
 <img src="docs/screenshots/hero-score.png" width="700" />
 
 ### The Great Divide — Bull vs Bear
@@ -146,7 +231,7 @@ Ported from [anthropics/financial-services-plugins](https://github.com/anthropic
 ### 51 Jury Seats
 <img src="docs/screenshots/jury-seats.png" width="700" />
 
-### Chat Room Mode
+### Chat-room mode
 <img src="docs/screenshots/chat-room.png" width="700" />
 
 ### DCF Sensitivity Heatmap
@@ -155,7 +240,7 @@ Ported from [anthropics/financial-services-plugins](https://github.com/anthropic
 ### IC Memo — 3 Scenarios
 <img src="docs/screenshots/ic-memo.png" width="700" />
 
-### 22 Dimension Deep Cards
+### 22-Dimension Deep Cards
 <img src="docs/screenshots/deep-scan.png" width="700" />
 
 ### Social Share Card
@@ -163,19 +248,83 @@ Ported from [anthropics/financial-services-plugins](https://github.com/anthropic
 
 ---
 
+## 🔓 Login-Required Data Sources (optional)
+
+Some sources need login to avoid being sampled out. **All are opt-in** — defaults work without any login, just with limited data.
+
+| Source | What It Unlocks | How to Enable |
+|---|---|---|
+| **XueQiu** (`cubes_search`) | Dim 19 · real-money portfolios holding this stock + their returns | `export UZI_XQ_LOGIN=1 && python -m lib.xueqiu_browser login` (one-time browser prompt; cookies persisted to `~/.uzi-skill/playwright-xueqiu/`). Or use flag: `python run.py BABA --enable-xueqiu-login`. |
+
+If you don't enable, the dim transparently reports `"⚠️ XueQiu login required, 0 cubes shown"` — no silent data holes.
+
+---
+
 ## ❓ FAQ
 
 **Q: How long does it take?**
-A: 5-8 minutes per stock. Most time is data fetching. The modeling itself takes <1 second.
+A: 5-8 minutes per stock. Most time is data fetching. Modeling itself is <1 second.
 
 **Q: Do I need paid data sources?**
-A: No. All free (akshare / yfinance / DuckDuckGo / cninfo). Zero API keys.
+A: No. All free (akshare / yfinance / DuckDuckGo / CNInfo / HKEXNews / Eastmoney / XueQiu backend). Zero API keys required. Optional `MX_APIKEY` (mx妙想 API) for enhanced A-share indicators — it's free too.
 
-**Q: Does it work for US/HK stocks?**
-A: Yes. `/analyze-stock AAPL` or `/analyze-stock 00700.HK`.
+**Q: Does it work for US / HK stocks?**
+A: Yes. `/analyze-stock AAPL`, `/analyze-stock BABA`, `/analyze-stock 00700.HK`. HK now has 3-layer kline fallback (Eastmoney → Sina → yfinance) since v2.7.2.
+
+**Q: Can I use English company names?**
+A: Best: use ticker codes (`BABA` / `00700.HK` / `600519.SH`). Name-resolution works for Chinese names (`贵州茅台` → `600519.SH`); for English names prefer the ticker.
+
+**Q: Does the 51-investor panel quote real investors?**
+A: Yes. The `quotes-knowledge-base.md` contains real published quotes from 45+ investors (22 Western, 23 Chinese), each with source URLs (Berkshire letters, Oaktree memos, books, interviews). Agents are instructed to mimic each investor's voice **using these real quotes**, not fabricate a "Buffett-style" line.
 
 **Q: Is this investment advice?**
-A: No. This is a tool, not a fortune teller. The 51 investor opinions are rule-engine simulations, not real people's views.
+A: **No.** This is a research tool, not a fortune teller. The 51 investor opinions are rule-engine simulations, not the real people's views. Don't bet the farm on Claude's Buffett impression.
+
+**Q: I'm behind the Great Firewall, will data sources work?**
+A: Most do. `akshare` / `yfinance` / Eastmoney / XueQiu all work from mainland China. Some Western sources (Bloomberg / Reuters) aren't used. DuckDuckGo web search occasionally rate-limits — see `docs/NETWORK-TROUBLESHOOTING.md` if the `3_macro` / `13_policy` / `15_events` dims report empty.
+
+**Q: I'm outside China, will Chinese data sources work?**
+A: Yes. akshare / Eastmoney / XueQiu / CNInfo / HKEXNews all serve international IPs. No VPN needed. The mx妙想 API (A-share indicators) requires the free `MX_APIKEY` env var.
+
+---
+
+## 🛠 Architecture in One Diagram
+
+```
+          user says "/analyze-stock BABA"
+                       ↓
+   ┌──────────────────────────────────────────────┐
+   │   Task 1 · Stage1 — parallel data fetch      │
+   │   22 fetchers × 20+ sources                  │
+   │   (akshare / yfinance / DDG / mx / cninfo …) │
+   └──────────────────────────────────────────────┘
+                       ↓ raw_data.json
+   ┌──────────────────────────────────────────────┐
+   │   Task 2 · Rule engine scoring               │
+   │   22 dims → dimensions.json                  │
+   │   51 investors × 180 rules → panel.json      │
+   └──────────────────────────────────────────────┘
+                       ↓ HARD-GATE (agent takes over)
+   ┌──────────────────────────────────────────────┐
+   │   Task 3 · Agent analysis                    │
+   │   reads quotes-knowledge-base.md             │
+   │   writes agent_analysis.json                 │
+   │     (dim_commentary · panel_insights ·       │
+   │      great_divide · narrative_override …)    │
+   └──────────────────────────────────────────────┘
+                       ↓ stage2 merge
+   ┌──────────────────────────────────────────────┐
+   │   Task 4 · Synthesis · style weighting       │
+   │   7+1 stock style × 7 investor-school matrix │
+   │   → synthesis.json                           │
+   └──────────────────────────────────────────────┘
+                       ↓
+   ┌──────────────────────────────────────────────┐
+   │   Task 5 · Report assembly                   │
+   │   → full-report.html (single file, offline)  │
+   │   → share-card.png · war-report.png          │
+   └──────────────────────────────────────────────┘
+```
 
 ---
 
@@ -193,7 +342,13 @@ A: No. This is a tool, not a fortune teller. The 51 investor opinions are rule-e
 
 ## ⚠️ Disclaimer
 
-This tool generates analysis reports using AI models based on public data. All scores, recommendations, and simulated commentary are algorithm outputs and do not represent any real investor's actual views. **Not investment advice.** Invest at your own risk.
+This tool generates analysis reports using AI models on public data. All scores, recommendations, and simulated commentary are algorithm outputs and do **not** represent any real investor's actual views (even if a quote is real, the scoring around it is simulated). **Not investment advice.** Past performance is not indicative of future results. Charlie Munger still lost money on Alibaba, and he actually read the 10-Q. Invest at your own risk.
+
+---
+
+## Thanks
+
+[Linux.do](https://linux.do/) — "Linux.do is all you need to learn AI." Thanks for the testing community.
 
 ---
 

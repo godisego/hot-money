@@ -1,5 +1,65 @@
 # Release Notes
 
+## v2.8.2 — 2026-04-17 (English support · 面向全球用户)
+
+> **README_EN / plugin manifests / marketplace 全面升级英文支持，面向西方投资者展示核心卖点：帮你理解让芒格都亏钱的阿里巴巴这种中国股票**
+
+### 背景
+用户："加入对英语的支持，在英文版可以提到，这个插件可以帮助您了解中国很多的股票，例如让芒格亏了几千万的阿里巴巴"。
+
+旧 `README_EN.md` (204 行) 只是 Chinese README 的直译，**没回答"这东西对西方用户为什么有价值"**——Bloomberg 终端覆盖 HK 和 ADR 但 A 股数据薄；Anthropic 官方 financial-services-plugins 是 US-only 且要 FactSet 付费源。Western users 手头没有这种工具。
+
+### 新增 · "Why Western Investors Should Care" 章节
+
+开篇直接定位为"Bloomberg 没做好、Anthropic 官方插件没覆盖的中国市场分析"：
+
+- Bloomberg covers HK and ADRs, but A-share data is thin
+- Reuters / FT give macro, not per-company fundamentals
+- financial-services-plugins is US-only, FactSet-gated
+- 20+ free Chinese data sources (akshare / Eastmoney / XueQiu / CNInfo / HKEXNews / mx妙想 API)
+
+然后用 **Munger/Alibaba 的真实案例** 作为 hook：
+
+> 2021 年 Munger 通过 DJCO 重仓 Alibaba，2022 年 ~70% 回撤后不得不砍仓一半，
+> [在 2022 DJCO 年会称"这是我犯过最糟糕的错误之一"](https://www.cnbc.com/2023/02/15/charlie-munger-says-he-regrets-alibaba-investment-one-of-the-worst-mistakes.html)，
+> 估计九位数损失。**Even legends underestimate how differently the Chinese regulatory and competitive landscape behaves. 普通投资者更需要分析武器。**
+
+然后列出目标股票：**Alibaba / Tencent / Kweichow Moutai / CATL / BYD / Pop Mart / Pinduoduo** — "the same names that keep showing up in Western portfolios and keep surprising their owners 😉"
+
+### README_EN 其他升级 (204 → 359 行)
+
+- **新增**: Plugin command prefix 命名空间说明（`stock-deep-analyzer:analyze-stock`）
+- **新增**: 多 agent 生态安装（Codex / OpenClaw / Cursor / Gemini CLI / OpenCode / Windsurf / Devin / 📱 remote mode）
+- **新增**: Ticker format tips for English users（A/H/U 三市场代码格式）
+- **新增**: XueQiu 登录章节
+- **新增**: Time horizon / what-would-change-my-mind 表格（Buffett/Zhao Laoge/Simons/Lynch/Soros）
+- **新增**: 架构 ASCII 图（Task 1-5 流程）
+- **新增**: FAQ 补"英文名解析"、"GFW 影响"、"海外是否能用"、"panel 原话是否真实"
+- **Disclaimer** 尾部加一句："Charlie Munger still lost money on Alibaba, and he actually read the 10-Q."
+
+### plugin manifests 双语化
+
+- `.claude-plugin/plugin.json` · description 中英双语；keywords 追加 `china-stocks / hong-kong-stocks / chinese-equities / alibaba / tencent / buffett / munger / equity-research`
+- `.claude-plugin/marketplace.json` · description 双语 + Munger/Alibaba hook
+- `.cursor-plugin/plugin.json` · description 双语
+- `package.json` · description 双语
+
+### 回归
+
+- 30/30 regression tests pass（README 变更不影响代码测试）
+- Chinese README ↔ English README 双向链接已验证（`**中文** | [English](README_EN.md)`）
+
+### 改动文件
+
+- `README_EN.md` · 204 → **359** 行（全面重写 + Munger/Alibaba hook + 6 个新章节）
+- `.claude-plugin/plugin.json` · description 双语 + 7 个英文 keywords
+- `.claude-plugin/marketplace.json` · description 双语
+- `.cursor-plugin/plugin.json` · description 双语
+- `package.json` · description 双语
+- 版本号 2.8.1 → 2.8.2（4 个 manifest）
+
+---
+
 ## v2.8.1 — 2026-04-17 (quotes expansion · 22 个海外人物真实原话)
 
 > **quotes-knowledge-base.md 扩容 306 → 639 行，补齐 22 位海外代表人物的真实原话 + URL 溯源**

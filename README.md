@@ -12,15 +12,42 @@
 [![Methods](https://img.shields.io/badge/Institutional%20Methods-17-red)]()
 [![Self-Review](https://img.shields.io/badge/Self--Review-13%20checks-blueviolet)](skills/deep-analysis/scripts/lib/self_review.py)
 
-A 股 / 港股 / 美股 · 个股深度分析引擎 · **v2.15.0 YAML persona 接入 agent role-play + v2.14.0 自动版本检测 + v2.13.7 16 新源接入 + v2.11 评分校准**
+A 股 / 港股 / 美股 · 个股深度分析引擎 · **v2.15.3 capital_flow universe cache 性能 100x + v2.15.2 Gemini/网络自检 + v2.15.0 YAML persona**
 
 [安装](#安装) · [用法](#用法) · [三档深度](#-三档思考深度v2103-新增) · [Hermes 🆕](INSTALL-HERMES.md) · [评审团](#-51-位评审团) · [机构方法](#-17-种机构级方法) · [自查 gate](#-机械级自查-gatev29-起) · [报告截图](#-报告长什么样) · [FAQ](#-faq) · [入群交流测试](#-测试交流群) · [Contributors](CONTRIBUTORS.md)
 
 **中文** | [English](README_EN.md)
 
-**Hermes 用户**：`hermes skills install wbh604/UZI-Skill/skills/deep-analysis` 即可。详见 [INSTALL-HERMES.md](INSTALL-HERMES.md)（基于 `hermes-compat` 分支）。
-
 </div>
+
+---
+
+## 🚀 30 秒上手
+
+**任何 agent 里丢一句话 · 装好就能用**。详细装法见 [安装](#安装)。
+
+| 你用的 agent | 直接丢这句 |
+|---|---|
+| **Claude Code** | `/plugin marketplace add wbh604/UZI-Skill` 然后 `/plugin install stock-deep-analyzer@uzi-skill` |
+| **Codex / OpenAI CLI** | "按 https://raw.githubusercontent.com/wbh604/UZI-Skill/main/.codex/INSTALL.md 装 UZI-Skill，分析 600519" |
+| **Cursor** | `/add-plugin stock-deep-analyzer` |
+| **Gemini CLI** | `gemini extensions install https://github.com/wbh604/UZI-Skill` |
+| **Hermes** | `hermes skills install wbh604/UZI-Skill/skills/deep-analysis`（基于 [`hermes-compat`](INSTALL-HERMES.md) 分支） |
+| **OpenClaw / 龙虾** | "装 https://github.com/wbh604/UZI-Skill 这个股票分析技能" |
+| **CLI 直用** | `git clone https://github.com/wbh604/UZI-Skill.git && cd UZI-Skill && pip install -r requirements.txt && python run.py 贵州茅台` |
+
+装好后最常用 4 条命令（任何 agent 里直接说）：
+
+```
+/stock-deep-analyzer:analyze-stock 贵州茅台    ← 完整 22 维 × 51 评委分析（5-8min）
+/stock-deep-analyzer:quick-scan 002217         ← 30 秒速判
+/stock-deep-analyzer:scan-trap 002217          ← 杀猪盘排查
+/stock-deep-analyzer:dcf 600519                ← DCF 估值专项
+```
+
+> 💡 **当前最新稳定版 v2.15.3**：性能大幅优化（基金持仓/北向/解禁相关维度 **~100x 加速**）· 跑一只票 5 min 内出完整 Bloomberg 风格报告 · 全免费数据源 · 零 API key · A 股直接能跑。
+
+---
 
 
 ## 💬 测试交流群

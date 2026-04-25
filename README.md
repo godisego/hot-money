@@ -55,18 +55,6 @@ A 股 / 港股 / 美股 · 个股深度分析引擎 · **v3.2.0 assemble_report 
 /stock-deep-analyzer:dcf 600519                ← DCF 估值专项
 ```
 
-> 💡 **当前最新稳定版 v3.2.0**（架构大重构 · 业务零区别）：
-> - **v3.0.0** · pipeline 架构默认启用（`python run.py <ticker>` 默认走新路径 · `UZI_LEGACY=1` 回老路径）
-> - **v3.1.0** · `run_real_test.py` 2105 → 735 行（-65%）· 1228 行纯函数迁到 `lib/pipeline/score_fns.py`
-> - **v3.2.0** · `assemble_report.py` 2964 → 587 行（-80%）· 拆 5 个 `lib/report/*.py` 子模块
->
-> 两个巨文件合计 **5069 → 1322 行 (-74%)** · 332 tests 全过 · 真机 e2e 002217 resume 10s 出报告 · v2.x 所有 API 100% 向后兼容.
->
-> v2.15 系列继续保留：capital_flow universe cache（100x 加速）· school_scores 按流派打分 · 混合公式 + 极化拉伸.
-
----
-
-
 ## 这是啥
 
 一句话：输入一只股票，Claude 变成你的私人分析师，跑完 22 个维度的数据、调 17 种华尔街分析模型、让 51 个投资风格完全不同的大佬各自打分，最后吐出一份 600KB 的 Bloomberg 风格报告。

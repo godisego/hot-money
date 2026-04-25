@@ -1,0 +1,10 @@
+.git
+.github
+reports
+skills/deep-analysis/scripts/reports
+skills/deep-analysis/scripts/.cache
+__pycache__
+*.pyc
+.DS_Store
+.env
+node_modules

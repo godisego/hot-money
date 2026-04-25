@@ -1,6 +1,6 @@
 <div align="center">
 
-# 游资 (UZI) Skills
+# Hot Money
 
 *"51 legendary investors review your stock picks — Buffett and a Chinese day-trader finally sit at the same table."*
 
@@ -74,7 +74,7 @@ No matter which agent you use, **one line does it**:
 ### Claude Code
 
 ```
-/plugin marketplace add wbh604/UZI-Skill
+/plugin marketplace add godisego/hot-money
 /plugin install stock-deep-analyzer@uzi-skill
 ```
 
@@ -94,11 +94,11 @@ Then say `/stock-deep-analyzer:analyze-stock Tencent` or `/stock-deep-analyzer:a
 
 Just tell Codex:
 
-> Please follow https://raw.githubusercontent.com/wbh604/UZI-Skill/main/.codex/INSTALL.md to install UZI-Skill, then deep-analyze Alibaba (BABA).
+> Please follow https://raw.githubusercontent.com/godisego/hot-money/main/.codex/INSTALL.md to install UZI-Skill, then deep-analyze Alibaba (BABA).
 
 ### OpenClaw / 龙虾
 
-> Install https://github.com/wbh604/UZI-Skill and analyze Tencent (00700.HK) for me.
+> Install https://github.com/godisego/hot-money and analyze Tencent (00700.HK) for me.
 
 ### Cursor
 
@@ -111,24 +111,24 @@ Then say "analyze BABA".
 ### Gemini CLI
 
 ```bash
-gemini extensions install https://github.com/wbh604/UZI-Skill
+gemini extensions install https://github.com/godisego/hot-money
 ```
 
 ### OpenCode
 
-> Follow https://raw.githubusercontent.com/wbh604/UZI-Skill/main/.opencode/INSTALL.md and analyze Pop Mart (09992.HK).
+> Follow https://raw.githubusercontent.com/godisego/hot-money/main/.opencode/INSTALL.md and analyze Pop Mart (09992.HK).
 
 ### Windsurf / Devin / Any Other Agent
 
 Paste this:
 
-> Clone https://github.com/wbh604/UZI-Skill, read `AGENTS.md`, then deep-analyze Alibaba (09988.HK).
+> Clone https://github.com/godisego/hot-money, read `AGENTS.md`, then deep-analyze Alibaba (09988.HK).
 
 ### CLI Only
 
 ```bash
-git clone https://github.com/wbh604/UZI-Skill.git
-cd UZI-Skill && pip install -r requirements.txt
+git clone https://github.com/godisego/hot-money.git
+cd hot-money && pip install -r requirements.txt
 python skills/deep-analysis/scripts/run_real_test.py BABA
 ```
 
@@ -453,7 +453,7 @@ Every time a new BUG is fixed, a matching `check_*` rule is added to self_review
 
 ## ⭐ Star History
 
-Live count: ![GitHub Repo stars](https://img.shields.io/github/stars/wbh604/UZI-Skill?style=social)
+Live count: ![GitHub Repo stars](https://img.shields.io/github/stars/godisego/hot-money?style=social)
 
 <a href="https://star-history.com/#wbh604/uzi-skill&Date">
  <picture>

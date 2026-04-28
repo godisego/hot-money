@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from lib.report.svg_primitives import (
     COLOR_BULL, COLOR_BEAR, COLOR_GOLD, COLOR_CYAN, COLOR_MUTED,
-    svg_gauge, svg_progress_row,
+    svg_gauge, svg_progress_row, svg_sparkline, svg_radar,
 )
 from lib.report.dim_viz import _score_class
 

@@ -482,15 +482,18 @@ def run_analysis(job_id: str, ticker: str, depth: str):
     job["status"] = "running"
     job["started"] = datetime.now()
     cmd = ["python3", str(ROOT / "run.py"), ticker, "--depth", depth, "--no-browser"]
+    proc = None
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, cwd=str(ROOT),
         )
+        job["pid"] = proc.pid
         for line in proc.stdout:
             job["log"] += line
             job["log_display"] = re.sub(r"\x1b\[[0-9;]*m", "", job["log"])[-12000:]
         proc.wait()
+        job["pid"] = None
         if proc.returncode != 0:
             job["status"] = "error"
             return
@@ -509,6 +512,7 @@ def run_analysis(job_id: str, ticker: str, depth: str):
         job["status"] = "error"
         job["log"] += f"\n\n✗ 异常: {e}"
     finally:
+        job["pid"] = None
         with _queue_lock:
             _running.discard(job_id)
 
@@ -624,7 +628,7 @@ def analyze():
     JOBS[job_id] = {
         "ticker": ticker, "depth": depth, "status": "queued",
         "log": "", "log_display": "", "report_dir": None,
-        "queue_position": 0,
+        "queue_position": 0, "pid": None,
     }
     with _queue_lock:
         if len(_running) >= MAX_CONCURRENT:
@@ -639,6 +643,17 @@ def status(job_id):
     job = JOBS.get(job_id)
     if not job:
         return jsonify({"status": "notfound"}), 404
+    pid = job.get("pid")
+    if job["status"] == "running" and pid:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            job["pid"] = None
+            job["status"] = "error"
+            job["log"] += "\n\n✗ 分析进程已退出，任务状态已重置"
+            job["log_display"] = re.sub(r"\x1b\[[0-9;]*m", "", job["log"])[-12000:]
+            with _queue_lock:
+                _running.discard(job_id)
     elapsed = int((datetime.now() - job["started"]).total_seconds()) if job.get("started") else 0
     # 如果还在排队,实时算位置
     q_pos = 0

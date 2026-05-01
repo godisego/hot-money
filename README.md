@@ -38,8 +38,8 @@ A 股 / 港股 / 美股 · 个股深度分析引擎 · **v3.3.2 GitHub issue #50
 
 | 你用的 agent | 直接丢这句 |
 |---|---|
-| **Claude Code** | `/plugin marketplace add godisego/hot-money` 然后 `/plugin install stock-deep-analyzer@uzi-skill` |
-| **Codex / OpenAI CLI** | "按 https://raw.githubusercontent.com/godisego/hot-money/main/.codex/INSTALL.md 装 UZI-Skill，分析 600519" |
+| **Claude Code** | `/plugin marketplace add godisego/hot-money` 然后 `/plugin install stock-deep-analyzer@hot-money` |
+| **Codex / OpenAI CLI** | "按 https://raw.githubusercontent.com/godisego/hot-money/main/.codex/INSTALL.md 装 Hot Money，分析 600519" |
 | **Cursor** | `/add-plugin stock-deep-analyzer` |
 | **Gemini CLI** | `gemini extensions install https://github.com/godisego/hot-money` |
 | **Hermes** | `hermes skills install godisego/hot-money/skills/deep-analysis`（v3.3.1+ main 分支已直接支持 · 详见 [INSTALL-HERMES.md](INSTALL-HERMES.md)） |
@@ -124,7 +124,7 @@ A 股 / 港股 / 美股 · 个股深度分析引擎 · **v3.3.2 GitHub issue #50
 
 ```
 /plugin marketplace add godisego/hot-money
-/plugin install stock-deep-analyzer@uzi-skill
+/plugin install stock-deep-analyzer@hot-money
 ```
 
 装好后说 `/stock-deep-analyzer:analyze-stock 贵州茅台`。

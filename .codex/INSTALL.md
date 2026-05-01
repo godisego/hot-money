@@ -1,12 +1,12 @@
-# UZI-Skill · Codex 安装指南
+# Hot Money · Codex 安装指南
 
 ## 自动安装（推荐）
 
 在 Codex 环境中执行：
 
 ```bash
-git clone https://github.com/wbh604/UZI-Skill.git
-cd UZI-Skill
+git clone https://github.com/godisego/hot-money.git
+cd hot-money
 pip install -r requirements.txt
 ```
 
@@ -67,7 +67,7 @@ python run.py 贵州茅台 --remote
 ## 目录结构
 
 ```
-UZI-Skill/
+hot-money/
 ├── run.py                    ← 一键入口
 ├── AGENTS.md                 ← Codex 自动读取
 ├── skills/deep-analysis/     ← 核心分析工作流

@@ -75,7 +75,7 @@ No matter which agent you use, **one line does it**:
 
 ```
 /plugin marketplace add godisego/hot-money
-/plugin install stock-deep-analyzer@uzi-skill
+/plugin install stock-deep-analyzer@hot-money
 ```
 
 Then say `/stock-deep-analyzer:analyze-stock Tencent` or `/stock-deep-analyzer:analyze-stock 00700.HK`.

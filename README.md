@@ -771,22 +771,6 @@ python run.py <ticker> --no-resume
 
 ---
 
-## ⭐ Star History
-
-实时 stars：![GitHub Repo stars](https://img.shields.io/github/stars/godisego/hot-money?style=social)
-
-<a href="https://star-history.com/#wbh604/uzi-skill&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=wbh604/uzi-skill&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=wbh604/uzi-skill&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=wbh604/uzi-skill&type=Date" />
- </picture>
-</a>
-
-> 注：star-history.com 服务端有 24h 缓存，增长很猛的前几天图可能滞后（想看当前真实数字看上面的 shields.io badge，或点图进 star-history 官网会触发刷新）。
-
----
-
 <div align="center">
 
 MIT License · Made by FloatFu-true · O.o

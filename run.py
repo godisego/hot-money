@@ -239,6 +239,39 @@ def start_cloudflare_tunnel(port: int = 8976):
     return public_url
 
 
+def print_agent_fallback_plan(html_path: Path, reason: str = "无公网链接可用") -> None:
+    """
+    输出给 agent (Claude / Codex / 腾讯云 Claw) 的结构化指令块.
+
+    场景: cloudflared 装不上 / trycloudflare 起不来 / 容器无公网 IP（典型: 国内云容器 + GFW）.
+    目标: 让 agent 看到这段 stdout 就知道下一步该怎么把报告交付给用户,
+          而不是傻乎乎告诉用户去访问 http://localhost.
+    """
+    abs_path = html_path.resolve()
+    size_kb = abs_path.stat().st_size // 1024 if abs_path.exists() else 0
+
+    print(f"\n{'━' * 60}")
+    print(f"⚠️  {reason}")
+    print(f"\n📁 报告已生成（绝对路径，下面 agent 要用）:")
+    print(f"   {abs_path}")
+    print(f"   大小: {size_kb} KB")
+    print(f"\n[AGENT INSTRUCTION · 请按下面顺序之一交付给用户]")
+    print(f"")
+    print(f"  1. 优先 · 把 .html 作为附件 / 文件发送给用户")
+    print(f"     - 腾讯云 Claw / Codex Web / Cursor 等都支持发送本地文件")
+    print(f"     - 用 agent 平台的 '附件' / '发送文件' / '打开文件' 按钮")
+    print(f"     - 路径就是上面那个绝对路径")
+    print(f"")
+    print(f"  2. 次选 · 报告小于 100 KB 时, 直接读 HTML 内容渲染对话里")
+    print(f"     - 适合: agent 支持渲染 HTML 或用户只要文字摘要")
+    print(f"")
+    print(f"  3. 兜底 · 告诉用户路径, 让用户从 agent 控制台 / 文件管理")
+    print(f"     面板自己下载")
+    print(f"")
+    print(f"❌ 不要让用户访问 http://localhost:xxx —— 容器外不可达")
+    print(f"❌ 不要让用户访问 trycloudflare.com —— 当前环境无法生成")
+    print(f"{'━' * 60}\n")
+
 def _maybe_prompt_update() -> None:
     """v2.14.0 · CLI 启动时检测 GitHub 新版本 · interactive y/s/n.
 
@@ -517,8 +550,13 @@ def main():
                 print("\n⏹  服务已停止")
                 httpd.shutdown()
         else:
-            # cloudflared 失败，至少提供本地 HTTP
-            print(f"\n   本地访问: http://localhost:{args.port}/{filename}")
+            # cloudflared 失败 (典型: 国内云容器到 GitHub Releases / Cloudflare Edge 不通)
+            # 打印 [AGENT INSTRUCTION] 指引 agent 把文件交付给用户
+            print_agent_fallback_plan(
+                standalone,
+                reason="cloudflared 不可用 / 公网隧道起不来（国内云容器常见）"
+            )
+            print(f"   本地访问（仅 agent 容器内可达）: http://localhost:{args.port}/{filename}")
             try:
                 while True:
                     time.sleep(1)
@@ -526,10 +564,12 @@ def main():
                 print("\n⏹  服务已停止")
                 httpd.shutdown()
     elif not env["has_browser"] or args.no_browser:
-        # 无浏览器环境，提示用户
-        print(f"\n💡 提示: 当前环境无法打开浏览器")
-        print(f"   方式 1: 下载文件到本地打开")
-        print(f"   方式 2: python run.py {args.ticker} --remote  ← 生成公网链接，手机就能看")
+        # 无浏览器环境 (典型: 腾讯云 Claw / Codex Sandbox / SSH session)
+        # 直接给 agent 一个交付计划, 比"提示用户自己想办法"靠谱
+        print_agent_fallback_plan(
+            standalone,
+            reason="当前环境无浏览器 / --no-browser 模式"
+        )
 
     print(f"{'━' * 50}")
     print(f"✅ 完成!")

@@ -7,6 +7,37 @@
 
 ---
 
+## v3.3.2 (2026-04-28 · GitHub issue #50 + #51 hotfix)
+
+### BUG #50 · institutional.py 漏 import svg_sparkline · NameError 卡死 stage2
+- **症状**：用户报"Stage 2 总是超时"· 实际是 `NameError: name 'svg_sparkline' is not defined`
+- **位置**：`lib/report/institutional.py:211-212` · `_render_lbo_block` 函数内
+- **根因**：v3.2 拆分时 institutional.py 的 import 块只列 `svg_gauge / svg_progress_row` · 漏了 svg_sparkline · 但 _render_lbo_block 实际调用了它
+- **触发条件**：dim20.lbo.ebitda_path 或 debt_schedule 非空时（绝大多数股票都会触发）
+- **影响**：stage2 整个崩 · HTML 不出 · 用户感知"卡住超时"
+- **修法**：import 块加 `svg_sparkline`
+- **验证**：手动构造 dim20 跑 _render_lbo_block · 应生成 2 个 SVG sparkline
+- **回归测试**：`tests/test_v3_3_2_issue_fixes.py::test_institutional_imports_svg_sparkline` + `test_render_lbo_block_does_not_raise_nameerror`
+- **未来改该区域注意事项**：
+  - 任何在 lib/report/* 子模块用的 SVG 函数必须在文件顶部 import block 显式列出
+  - v3.2 拆分时容易漏 import · 抽块前先 grep 该块用了哪些函数 · 全部加进 import 列表
+  - 推荐：每个新 lib/report/*.py 文件都在 CI 跑 `python -c "import lib.report.X"` 烟雾测试
+
+### BUG #51 · XueQiu cubes_search.json endpoint 已下线
+- **症状**：用户报"XueQiu 登录成功但验证失败" · cookie 已保存但 endpoint 仍 400
+- **位置**：`lib/xueqiu_browser.py:32` (LOGIN_TEST_URL) · `lib/xueqiu_browser.py::fetch_cubes_via_browser` · `fetch_contests.py::fetch_xueqiu_cubes`
+- **根因**：XueQiu 把 `/cubes/cubes_search.json` endpoint 完全下线 · 未保留兼容
+- **社区修法**：@Kylin824 提供新 URL `/query/v1/search/cube/stock.json?q={xq_symbol}&count={limit}&page=1`
+- **修法**：3 处同步换新 endpoint
+- **验证**：grep 项目无 `cubes/cubes_search.json` API 调用残留
+- **回归测试**：`test_xueqiu_login_url_uses_new_endpoint` + `test_xueqiu_browser_fetch_uses_new_endpoint` + `test_fetch_contests_uses_new_endpoint`
+- **未来改该区域注意事项**：
+  - XueQiu API 不稳定 · 历史上多次改 endpoint · 任何报登录验证失败时优先怀疑 endpoint 失效
+  - 改 LOGIN_TEST_URL 必须同步 fetch_cubes_via_browser 和 fetch_contests · 三处保持一致
+  - `query/v1/search/cube/stock.json` 参数是 `q=` 不是 `code=` · category 参数也已废弃
+
+---
+
 ## v3.2.0 (2026-04-23 · assemble_report.py 拆分 80%)
 
 ### REFACTOR · assemble_report.py 从 2964 → 587 行

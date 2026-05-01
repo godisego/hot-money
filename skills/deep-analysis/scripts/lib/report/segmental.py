@@ -553,4 +553,3 @@ def _svg_segment_projection(segments: list, rev_hist: list, width: int = 420, he
   {legend}
   {end_labels}
 </svg>'''
-
